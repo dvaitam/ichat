@@ -105,7 +105,16 @@ app.post("/api/completions", async (req, res) => {
       }
       const candidate = Array.isArray(glData.candidates) && glData.candidates[0] ? glData.candidates[0] : {};
       const text = candidate.content?.parts?.[0]?.text || candidate.output || candidate.message?.content || '';
-      return res.json({ choices: [{ text }] });
+      const responseObj = { choices: [{ text }] };
+      // Save Gemini completion response
+      try {
+        const id = `gemini-${modelId}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        const filePath = path.join(responsesDir, `${id}.bin`);
+        fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => err && console.error('Error saving Gemini response:', err));
+      } catch (writeErr) {
+        console.error('Error writing Gemini response to file:', writeErr);
+      }
+      return res.json(responseObj);
     }
     // OpenAI API
     const baseUrl = 'https://api.openai.com/v1';
@@ -188,7 +197,16 @@ app.post("/api/chat/completions", async (req, res) => {
       const candidate = Array.isArray(glData.candidates) && glData.candidates[0] ? glData.candidates[0] : {};
       // Extract text from content.parts
       const content = candidate.content?.parts?.[0]?.text || '';
-      return res.json({ choices: [{ message: { content } }] });
+      const responseObj = { choices: [{ message: { content } }] };
+      // Save Gemini chat response
+      try {
+        const id = `gemini-chat-${modelId}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        const filePath = path.join(responsesDir, `${id}.bin`);
+        fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => err && console.error('Error saving Gemini chat response:', err));
+      } catch (writeErr) {
+        console.error('Error writing Gemini chat response to file:', writeErr);
+      }
+      return res.json(responseObj);
     }
     // OpenAI API
     const baseUrl = 'https://api.openai.com/v1';

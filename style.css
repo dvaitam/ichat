@@ -213,3 +213,36 @@ body {
   color: #666;
   max-width: 80%;
 }
+/* Code block header (first line) with centered text and copy button */
+.code-first-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f4f4f4;
+  padding: 0.5rem 1rem;
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #333;
+}
+/* Override copy-button inside code-first-line to static positioning */
+.code-first-line .copy-button {
+  position: static;
+  margin-left: 0.5rem;
+  top: auto;
+  right: auto;
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+/* Remove top radius from code block pre to align under header */
+.code-block pre {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}

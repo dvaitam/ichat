@@ -1,4 +1,30 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Helper to copy text to clipboard with fallback for insecure contexts
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.top = '0';
+    textarea.style.left = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (successful) {
+        return Promise.resolve();
+      } else {
+        return Promise.reject(new Error('Copy command was unsuccessful'));
+      }
+    } catch (err) {
+      document.body.removeChild(textarea);
+      return Promise.reject(err);
+    }
+  }
   // Sections and controls
   const apiKeySection = document.getElementById('api-key-section');
   const mainUI = document.getElementById('main-ui');
@@ -9,18 +35,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutButton = document.getElementById('logout-button');
   const modelSelect = document.getElementById('model');
   const responseDiv = document.getElementById('response');
-  // Initialize UI based on stored API key and provider
+  // Initialize UI based on stored provider and its API key
   const savedProvider = localStorage.getItem('provider') || 'openai';
-  // Initialize both provider selects
   loginProviderSelect.value = savedProvider;
   headerProviderSelect.value = savedProvider;
-  const savedKey = localStorage.getItem('apiKey') || '';
+  const savedKey = localStorage.getItem(`apiKey_${savedProvider}`) || '';
   apiKeyInput.value = savedKey;
   if (savedKey) {
     apiKeySection.style.display = 'none';
     mainUI.style.display = 'flex';
     fetchModels();
   } else {
+    apiKeySection.style.display = 'block';
     mainUI.style.display = 'none';
   }
   // Store provider/key and show main UI on entry
@@ -28,21 +54,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiKey = apiKeyInput.value.trim();
     const provider = loginProviderSelect.value;
     if (!apiKey) return;
-    localStorage.setItem('apiKey', apiKey);
+    // Save key per provider
+    localStorage.setItem(`apiKey_${provider}`, apiKey);
     localStorage.setItem('provider', provider);
-    // Sync header select
+    // Sync header select and show main UI
     headerProviderSelect.value = provider;
     apiKeySection.style.display = 'none';
     mainUI.style.display = 'flex';
     fetchModels();
   });
+  // When changing provider in login, preload saved key if any
+  loginProviderSelect.addEventListener('change', () => {
+    const provider = loginProviderSelect.value;
+    const key = localStorage.getItem(`apiKey_${provider}`) || '';
+    apiKeyInput.value = key;
+  });
   // Allow provider switch in header
   headerProviderSelect.addEventListener('change', () => {
     const provider = headerProviderSelect.value;
     localStorage.setItem('provider', provider);
-    // Sync login select if visible
+    // Sync login select
     loginProviderSelect.value = provider;
-    fetchModels();
+    // Check if key exists for this provider
+    const key = localStorage.getItem(`apiKey_${provider}`);
+    if (!key) {
+      // No key: redirect to login
+      apiKeyInput.value = '';
+      apiKeySection.style.display = 'block';
+      mainUI.style.display = 'none';
+    } else {
+      // Key present: update UI
+      apiKeyInput.value = key;
+      apiKeySection.style.display = 'none';
+      mainUI.style.display = 'flex';
+      fetchModels();
+    }
+  });
+  // Logout: clear current provider key and return to login
+  logoutButton.addEventListener('click', () => {
+    const provider = localStorage.getItem('provider') || loginProviderSelect.value;
+    localStorage.removeItem(`apiKey_${provider}`);
+    apiKeyInput.value = '';
+    loginProviderSelect.value = provider;
+    apiKeySection.style.display = 'block';
+    mainUI.style.display = 'none';
   });
   // Conversation management: load/store chats
   const convSelect = document.getElementById('conversation-select');
@@ -106,23 +161,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const lines = codeContent.split('\n');
       const firstLine = lines.shift();
       const restContent = lines.join('\n');
-      if (firstLine != null) {
-        const firstLineDiv = document.createElement('div');
-        firstLineDiv.className = 'code-first-line';
-        firstLineDiv.textContent = firstLine;
-        container.appendChild(firstLineDiv);
-      }
+      // Render code block with header (first line) and copy button
       const block = document.createElement('div');
       block.className = 'code-block';
-      const btn = document.createElement('button');
-      btn.className = 'copy-button';
-      btn.textContent = 'Copy';
-      btn.addEventListener('click', () => {
-        navigator.clipboard.writeText(restContent)
-          .then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); })
-          .catch(err => console.error('Copy failed:', err));
-      });
-      block.appendChild(btn);
+      if (firstLine != null) {
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'code-first-line';
+        headerDiv.textContent = firstLine;
+        const btn = document.createElement('button');
+        btn.className = 'copy-button';
+        btn.textContent = 'Copy';
+        btn.addEventListener('click', () => {
+          copyTextToClipboard(restContent)
+            .then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); })
+            .catch(err => console.error('Copy failed:', err));
+        });
+        headerDiv.appendChild(btn);
+        block.appendChild(headerDiv);
+      }
       const pre = document.createElement('pre');
       const codeElem = document.createElement('code');
       codeElem.textContent = restContent;
@@ -363,28 +419,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const lines = codeContent.split('\n');
         const firstLine = lines.shift();
         const restContent = lines.join('\n');
-        // Render the first line outside of the code block
-        if (firstLine != null) {
-          const firstLineDiv = document.createElement('div');
-          firstLineDiv.className = 'code-first-line';
-          firstLineDiv.textContent = firstLine;
-          assistantContainer.appendChild(firstLineDiv);
-        }
-        // Render the remaining code inside a styled code block
+        // Render code block with header (first line) and copy button
         const container = document.createElement('div');
         container.className = 'code-block';
-        const button = document.createElement('button');
-        button.className = 'copy-button';
-        button.textContent = 'Copy';
-        button.addEventListener('click', () => {
-          navigator.clipboard.writeText(restContent)
-            .then(() => {
-              button.textContent = 'Copied!';
-              setTimeout(() => { button.textContent = 'Copy'; }, 2000);
-            })
-            .catch(err => { console.error('Copy to clipboard failed:', err); });
-        });
-        container.appendChild(button);
+        if (firstLine != null) {
+          const headerDiv = document.createElement('div');
+          headerDiv.className = 'code-first-line';
+          headerDiv.textContent = firstLine;
+          const button = document.createElement('button');
+          button.className = 'copy-button';
+          button.textContent = 'Copy';
+          button.addEventListener('click', () => {
+            copyTextToClipboard(restContent)
+              .then(() => { button.textContent = 'Copied!'; setTimeout(() => { button.textContent = 'Copy'; }, 2000); })
+              .catch(err => { console.error('Copy to clipboard failed:', err); });
+          });
+          headerDiv.appendChild(button);
+          container.appendChild(headerDiv);
+        }
         const pre = document.createElement('pre');
         const codeElem = document.createElement('code');
         codeElem.textContent = restContent;
