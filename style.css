@@ -64,8 +64,19 @@
 #api-key-section {
   height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+}
+/* Provider select & API key input */
+#api-key-section select,
+#api-key-section input {
+  width: 280px;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 /* Page & container styling */
 body {
@@ -190,6 +201,12 @@ body {
   border: 1px solid #ddd;
   max-width: 80%;
   text-align: left;
+}
+.inline-code {
+  background-color: #f1f1f1;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
 }
 .loading {
   font-style: italic;

@@ -2,11 +2,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Sections and controls
   const apiKeySection = document.getElementById('api-key-section');
   const mainUI = document.getElementById('main-ui');
+  const providerSelect = document.getElementById('provider-select');
   const apiKeyInput = document.getElementById('api-key');
+  const loginProviderSelect = document.getElementById('provider-login-select');
+  const headerProviderSelect = document.getElementById('provider-select');
   const logoutButton = document.getElementById('logout-button');
   const modelSelect = document.getElementById('model');
   const responseDiv = document.getElementById('response');
-  // Initialize UI based on stored API key
+  // Initialize UI based on stored API key and provider
+  const savedProvider = localStorage.getItem('provider') || 'openai';
+  // Initialize both provider selects
+  loginProviderSelect.value = savedProvider;
+  headerProviderSelect.value = savedProvider;
   const savedKey = localStorage.getItem('apiKey') || '';
   apiKeyInput.value = savedKey;
   if (savedKey) {
@@ -16,13 +23,25 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     mainUI.style.display = 'none';
   }
-  // Store key and show main UI on entry
+  // Store provider/key and show main UI on entry
   apiKeyInput.addEventListener('blur', () => {
     const apiKey = apiKeyInput.value.trim();
+    const provider = loginProviderSelect.value;
     if (!apiKey) return;
     localStorage.setItem('apiKey', apiKey);
+    localStorage.setItem('provider', provider);
+    // Sync header select
+    headerProviderSelect.value = provider;
     apiKeySection.style.display = 'none';
     mainUI.style.display = 'flex';
+    fetchModels();
+  });
+  // Allow provider switch in header
+  headerProviderSelect.addEventListener('change', () => {
+    const provider = headerProviderSelect.value;
+    localStorage.setItem('provider', provider);
+    // Sync login select if visible
+    loginProviderSelect.value = provider;
     fetchModels();
   });
   // Conversation management: load/store chats
@@ -49,9 +68,38 @@ document.addEventListener('DOMContentLoaded', () => {
     while ((match = codeFenceRE.exec(fullText)) !== null) {
       const plainSegment = fullText.substring(lastIndex, match.index);
       if (plainSegment) {
+        // Render inline markdown: **bold** and `code`
         const textDiv = document.createElement('div');
         textDiv.className = 'text-block';
-        textDiv.textContent = plainSegment;
+        const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+        parts.forEach(part => {
+          if (!part) return;
+          if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
+            const innerText = part.slice(2, -2);
+            const strong = document.createElement('strong');
+            // Support inline code within bold
+            const innerParts = innerText.split(/(`[^`]+`)/g);
+            innerParts.forEach(ip => {
+              if (!ip) return;
+              if (/^`[^`]+`$/.test(ip)) {
+                const codeElem = document.createElement('code');
+                codeElem.className = 'inline-code';
+                codeElem.textContent = ip.slice(1, -1);
+                strong.appendChild(codeElem);
+              } else {
+                strong.appendChild(document.createTextNode(ip));
+              }
+            });
+            textDiv.appendChild(strong);
+          } else if (/^`[^`]+`$/.test(part)) {
+            const codeElem = document.createElement('code');
+            codeElem.className = 'inline-code';
+            codeElem.textContent = part.slice(1, -1);
+            textDiv.appendChild(codeElem);
+          } else {
+            textDiv.appendChild(document.createTextNode(part));
+          }
+        });
         container.appendChild(textDiv);
       }
       let codeContent = match[1].replace(/^\n|\n$/g, '');
@@ -85,9 +133,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const tail = fullText.substring(lastIndex);
     if (tail) {
+      // Render inline markdown in tail: **bold** and `code`
       const textDiv = document.createElement('div');
       textDiv.className = 'text-block';
-      textDiv.textContent = tail;
+      const parts = tail.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+      parts.forEach(part => {
+        if (!part) return;
+        if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
+          const innerText = part.slice(2, -2);
+          const strong = document.createElement('strong');
+          strong.textContent = innerText;
+          textDiv.appendChild(strong);
+        } else if (/^`[^`]+`$/.test(part)) {
+          const codeElem = document.createElement('code');
+          codeElem.className = 'inline-code';
+          codeElem.textContent = part.slice(1, -1);
+          textDiv.appendChild(codeElem);
+        } else {
+          textDiv.appendChild(document.createTextNode(part));
+        }
+      });
       container.appendChild(textDiv);
     }
   }
@@ -131,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/models', {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
+          'X-Provider': localStorage.getItem('provider') || 'openai',
         },
       });
       if (!response.ok) {
@@ -191,7 +257,22 @@ document.addEventListener('DOMContentLoaded', () => {
     responseDiv.appendChild(userDiv);
     // Save user message to current conversation
     const userConv = conversations.find(c => c.id === currentConversationId);
-    if (userConv) { userConv.messages.push({ role: 'user', content: prompt }); saveConversations(); }
+    if (userConv) {
+      userConv.messages.push({ role: 'user', content: prompt });
+      // If first user message, set conversation title to first few words
+      if (userConv.messages.length === 1) {
+        const words = prompt.trim().split(/\s+/);
+        let title = words.slice(0, 5).join(' ');
+        if (words.length > 5) title += '...';
+        userConv.name = title;
+        // Update conversation select dropdown
+        saveConversations();
+        populateConversationSelect();
+        convSelect.value = currentConversationId;
+      } else {
+        saveConversations();
+      }
+    }
     // Clear prompt input
     promptTextarea.value = '';
     // Loading indicator for assistant response
@@ -213,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
+          'X-Provider': localStorage.getItem('provider') || 'openai',
         },
         body: JSON.stringify(body),
       });
@@ -241,9 +323,38 @@ document.addEventListener('DOMContentLoaded', () => {
       while ((match = codeFenceRE.exec(fullText)) !== null) {
         const plainSegment = fullText.substring(lastIndex, match.index);
         if (plainSegment) {
+          // Render inline markdown: **bold** and `code`
           const textDiv = document.createElement('div');
           textDiv.className = 'text-block';
-          textDiv.textContent = plainSegment;
+          const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+          parts.forEach(part => {
+            if (!part) return;
+            if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
+              // Bold with potential inline code
+              const innerText = part.slice(2, -2);
+              const strong = document.createElement('strong');
+              const innerParts = innerText.split(/(`[^`]+`)/g);
+              innerParts.forEach(ip => {
+                if (!ip) return;
+                if (/^`[^`]+`$/.test(ip)) {
+                  const codeElem = document.createElement('code');
+                  codeElem.className = 'inline-code';
+                  codeElem.textContent = ip.slice(1, -1);
+                  strong.appendChild(codeElem);
+                } else {
+                  strong.appendChild(document.createTextNode(ip));
+                }
+              });
+              textDiv.appendChild(strong);
+            } else if (/^`[^`]+`$/.test(part)) {
+              const codeElem = document.createElement('code');
+              codeElem.className = 'inline-code';
+              codeElem.textContent = part.slice(1, -1);
+              textDiv.appendChild(codeElem);
+            } else {
+              textDiv.appendChild(document.createTextNode(part));
+            }
+          });
           assistantContainer.appendChild(textDiv);
         }
         // Extract code fence content and remove surrounding newlines
@@ -284,9 +395,38 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const tailSegment = fullText.substring(lastIndex);
       if (tailSegment) {
+        // Render inline markdown in tailSegment: **bold** and `code`
         const textDiv = document.createElement('div');
         textDiv.className = 'text-block';
-        textDiv.textContent = tailSegment;
+        const parts = tailSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+        parts.forEach(part => {
+          if (!part) return;
+          if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
+            // Bold with potential inline code
+            const innerText = part.slice(2, -2);
+            const strong = document.createElement('strong');
+            const innerParts = innerText.split(/(`[^`]+`)/g);
+            innerParts.forEach(ip => {
+              if (!ip) return;
+              if (/^`[^`]+`$/.test(ip)) {
+                const codeElem = document.createElement('code');
+                codeElem.className = 'inline-code';
+                codeElem.textContent = ip.slice(1, -1);
+                strong.appendChild(codeElem);
+              } else {
+                strong.appendChild(document.createTextNode(ip));
+              }
+            });
+            textDiv.appendChild(strong);
+          } else if (/^`[^`]+`$/.test(part)) {
+            const codeElem = document.createElement('code');
+            codeElem.className = 'inline-code';
+            codeElem.textContent = part.slice(1, -1);
+            textDiv.appendChild(codeElem);
+          } else {
+            textDiv.appendChild(document.createTextNode(part));
+          }
+        });
         assistantContainer.appendChild(textDiv);
       }
       // Scroll to bottom after rendering

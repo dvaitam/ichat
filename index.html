@@ -9,13 +9,21 @@
 <body>
   <!-- Only API key input shown initially -->
   <div id="api-key-section">
-    <input id="api-key" type="password" placeholder="OpenAI API Key" />
+    <select id="provider-login-select">
+      <option value="openai">OpenAI</option>
+      <option value="gemini">Gemini</option>
+    </select>
+    <input id="api-key" type="password" placeholder="API Key" />
   </div>
   <!-- Main UI hidden until API key is entered -->
   <div id="main-ui" class="container">
     <div class="header">
       <h1>OpenAI API UI</h1>
       <div class="conv-actions">
+        <select id="provider-select">
+          <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option>
+        </select>
         <select id="conversation-select"></select>
         <button id="new-chat-button">New Chat</button>
         <button id="logout-button">Logout</button>
