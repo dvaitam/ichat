@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return Promise.reject(err);
     }
   }
+  // Icon definitions for copy button
+  const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4C2.897 1 2 1.897 2 3v12h2V3h12V1z"/><path d="M20 5H8C6.897 5 6 5.897 6 7v14c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM20 21H8V7h12v14z"/></svg>`;
+  const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M20.285 6.707l-11.025 11.025-5.545-5.545 1.414-1.414 4.131 4.131 9.611-9.611z"/></svg>`;
   // Sections and controls
   const apiKeySection = document.getElementById('api-key-section');
   const mainUI = document.getElementById('main-ui');
@@ -170,10 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
         headerDiv.textContent = firstLine;
         const btn = document.createElement('button');
         btn.className = 'copy-button';
-        btn.textContent = 'Copy';
+        btn.innerHTML = COPY_ICON;
+        btn.setAttribute('aria-label', 'Copy to clipboard');
         btn.addEventListener('click', () => {
           copyTextToClipboard(restContent)
-            .then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); })
+            .then(() => { btn.innerHTML = CHECK_ICON; setTimeout(() => { btn.innerHTML = COPY_ICON; }, 2000); })
             .catch(err => console.error('Copy failed:', err));
         });
         headerDiv.appendChild(btn);
@@ -428,10 +432,11 @@ document.addEventListener('DOMContentLoaded', () => {
           headerDiv.textContent = firstLine;
           const button = document.createElement('button');
           button.className = 'copy-button';
-          button.textContent = 'Copy';
+          button.innerHTML = COPY_ICON;
+          button.setAttribute('aria-label', 'Copy to clipboard');
           button.addEventListener('click', () => {
             copyTextToClipboard(restContent)
-              .then(() => { button.textContent = 'Copied!'; setTimeout(() => { button.textContent = 'Copy'; }, 2000); })
+              .then(() => { button.innerHTML = CHECK_ICON; setTimeout(() => { button.innerHTML = COPY_ICON; }, 2000); })
               .catch(err => { console.error('Copy to clipboard failed:', err); });
           });
           headerDiv.appendChild(button);
