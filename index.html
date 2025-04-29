@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenAI API UI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Only API key input shown initially -->
+  <div id="api-key-section">
+    <input id="api-key" type="password" placeholder="OpenAI API Key" />
+  </div>
+  <!-- Main UI hidden until API key is entered -->
+  <div id="main-ui" class="container">
+    <div class="header">
+      <h1>OpenAI API UI</h1>
+      <div class="conv-actions">
+        <select id="conversation-select"></select>
+        <button id="new-chat-button">New Chat</button>
+        <button id="logout-button">Logout</button>
+      </div>
+    </div>
+    <!-- Chat messages area -->
+    <div id="response"></div>
+    <!-- Bottom toolbar: selectors above input -->
+    <div class="controls">
+      <div class="selectors">
+        <select id="api-type">
+          <option value="chat">Chat Completion</option>
+          <option value="completion">Completion</option>
+        </select>
+        <select id="model">
+          <option disabled selected>Enter API key to load models</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <textarea id="prompt" placeholder="Enter your prompt here..."></textarea>
+        <button id="send-button">Send</button>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
