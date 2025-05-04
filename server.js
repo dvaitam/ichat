@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 3000;
 // Helper to extract raw API key from Authorization header (strip 'Bearer ' if present)
 function getRawAPIKey(req) {
   const authHeader = req.header('authorization') || '';
@@ -237,6 +237,6 @@ app.post("/api/chat/completions", async (req, res) => {
 // Serve static front-end files
 app.use(express.static(path.join(__dirname)));
 
-app.listen(PORT,'0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`Server listening at http://0.0.0.0:${PORT}`);
 });
