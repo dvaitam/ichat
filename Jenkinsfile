@@ -17,7 +17,10 @@ pipeline {
         stage('Deploy') {
             steps {
                 dir('/var/lib/jenkins/myownai') {
+                    // Pull latest code and install dependencies
                     sh 'git pull origin main'
+                    sh 'npm install'
+                    // Restart the application
                     sh 'pm2 restart server.js'
                 }
             }

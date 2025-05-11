@@ -2,12 +2,23 @@ const express = require("express");
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
+const multer = require("multer");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Directory to store uploaded images
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+// Configure multer for file uploads
+const multerStorage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (req, file, cb) => {
+    const ext = file.mimetype.split('/')[1] || 'bin';
+    const filename = `upload-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+    cb(null, filename);
+  }
+});
+const upload = multer({ storage: multerStorage });
 // Helper to extract raw API key from Authorization header (strip 'Bearer ' if present)
 function getRawAPIKey(req) {
   const authHeader = req.header('authorization') || '';
@@ -290,38 +301,14 @@ app.post("/api/audio/transcriptions",
     }
   }
 );
-// File upload endpoint: saves image or video and returns URL
-// Increase raw body size limit for large video files (default 50mb → 200mb or override via UPLOAD_LIMIT env)
-const uploadLimit = process.env.UPLOAD_LIMIT || '200mb';
-app.post("/api/upload",
-  express.raw({
-    type: (req) => {
-      const ct = req.headers['content-type'] || '';
-      return ct.startsWith('image/') || ct.startsWith('video/');
-    },
-    limit: uploadLimit
-  }),
-  async (req, res) => {
-    try {
-      const contentType = req.header('content-type');
-      const ext = contentType.split('/')[1] || 'png';
-      const filename = `upload-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
-      const filePath = path.join(uploadsDir, filename);
-      fs.writeFile(filePath, req.body, err => {
-        if (err) {
-          console.error('Error saving upload:', err);
-          return res.status(500).json({ error: 'Failed to save file' });
-        }
-        // Return public URL path
-        const url = `/uploads/${filename}`;
-        res.json({ url });
-      });
-    } catch (err) {
-      console.error('Error in /api/upload:', err);
-      res.status(500).json({ error: 'Internal server error' });
-    }
+// File upload endpoint: saves image or video and returns URL using multer
+app.post("/api/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file provided" });
   }
-);
+  const url = `/uploads/${req.file.filename}`;
+  res.json({ url });
+});
 // Serve static front-end files
 // Image description endpoint using Google Vision API (requires VISION_API_KEY env var)
 app.post(

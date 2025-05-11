@@ -341,10 +341,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadingDiv.textContent = 'Uploading image...';
     responseDiv.appendChild(loadingDiv);
     try {
+      // Upload image via multipart/form-data
+      const formData = new FormData();
+      formData.append('file', file);
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': file.type },
-        body: file,
+        body: formData,
       });
       if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
       const { url } = await uploadRes.json();
@@ -383,10 +385,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadingDiv.textContent = 'Uploading video...';
     responseDiv.appendChild(loadingDiv);
     try {
+      // Upload video via multipart/form-data
+      const formData = new FormData();
+      formData.append('file', file);
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': file.type },
-        body: file,
+        body: formData,
       });
       if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
       const { url } = await uploadRes.json();
