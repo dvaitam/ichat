@@ -25,26 +25,32 @@
   .controls .selectors {
     flex-direction: column;
   }
-  /* Mobile tweaks for input row: full-width prompt and send button, inline icons with wrap */
+  /* Mobile tweaks for input row: full-width prompt and inline controls on second row */
   .controls .input-row {
     flex-wrap: wrap;
+    align-items: center;
   }
   /* Prompt textarea spans full width */
   .controls .input-row textarea {
-    width: 100%;
+    /* Override flex for full-width on mobile */
+    flex: 0 0 100% !important;
+    width: 100% !important;
     order: 1;
   }
-  /* Icon buttons inline and auto width */
+  /* Icon buttons inline with send button */
   .controls .input-row #img-button,
   .controls .input-row #video-button,
   .controls .input-row #mic-button {
     width: auto;
     order: 2;
+    margin-right: 0.5rem;
   }
-  /* Send button spans full width below icons */
+  /* Send button inline with icons, fills remaining space */
   .controls .input-row #send-button {
-    width: 100%;
-    order: 3;
+    order: 2;
+    flex: 1;
+    min-width: 0;
+    padding: 0.75rem;
   }
 }
 .header .conv-actions select {
@@ -211,7 +217,7 @@ body {
   min-height: 40px;
 }
 .controls .input-row button {
-  padding: 0 1rem;
+  padding: 0.75rem 1rem;
   background-color: #444;
   color: #fff;
   border: none;
