@@ -3,6 +3,50 @@
   display: flex;
   gap: 0.5rem;
 }
+/* Responsive tweaks for small screens */
+@media (max-width: 600px) {
+  /* Ensure container uses full screen width */
+  #main-ui.container {
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    max-width: 100%;
+  }
+  /* Stack conversation actions into two columns: provider, conversation on first row; new chat, logout on second */
+  .header .conv-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .header .conv-actions > * {
+    /* Each action takes half width of container on mobile */
+    flex: 1 1 50%;
+  }
+  /* Stack selectors */
+  .controls .selectors {
+    flex-direction: column;
+  }
+  /* Mobile tweaks for input row: full-width prompt and send button, inline icons with wrap */
+  .controls .input-row {
+    flex-wrap: wrap;
+  }
+  /* Prompt textarea spans full width */
+  .controls .input-row textarea {
+    width: 100%;
+    order: 1;
+  }
+  /* Icon buttons inline and auto width */
+  .controls .input-row #img-button,
+  .controls .input-row #video-button,
+  .controls .input-row #mic-button {
+    width: auto;
+    order: 2;
+  }
+  /* Send button spans full width below icons */
+  .controls .input-row #send-button {
+    width: 100%;
+    order: 3;
+  }
+}
 .header .conv-actions select {
   padding: 0.25rem 0.5rem;
   font-size: 0.9rem;
@@ -212,6 +256,12 @@ body {
   border-radius: 4px;
   margin-top: 0.5rem;
 }
+/* Video previews */
+.message video {
+  max-width: 100%;
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
 /* Links inside chat messages */
 .text-block a,
 .message-text a,
@@ -270,4 +320,23 @@ body {
   margin: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+}
+
+/* Mobile header: stack title and actions into grid layout */
+@media (max-width: 600px) {
+  .header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 1rem;
+  }
+  .header h1 {
+    margin: 0 0 0.5rem;
+  }
+  .header .conv-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    width: 100%;
+  }
 }

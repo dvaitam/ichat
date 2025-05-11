@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userDiv.className = 'message user-message';
     const imgEl = document.createElement('img');
     imgEl.src = URL.createObjectURL(file);
-    imgEl.style.maxWidth = '200px';
+    imgEl.style.maxWidth = '100%';
     userDiv.appendChild(imgEl);
     responseDiv.appendChild(userDiv);
     responseDiv.scrollTop = responseDiv.scrollHeight;
@@ -374,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userDiv.className = 'message user-message';
     const videoEl = document.createElement('video');
     videoEl.controls = true;
-    videoEl.style.maxWidth = '200px';
+    videoEl.style.maxWidth = '100%';
     const fileUrl = URL.createObjectURL(file);
     videoEl.src = fileUrl;
     userDiv.appendChild(videoEl);
