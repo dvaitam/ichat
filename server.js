@@ -234,6 +234,59 @@ app.post("/api/chat/completions", async (req, res) => {
   }
 });
 
+// Proxy to audio transcription endpoint (Whisper)
+app.post("/api/audio/transcriptions",
+  express.raw({ type: (req) => req.headers['content-type']?.startsWith('audio/'), limit: '10mb' }),
+  async (req, res) => {
+    const apiKey = getRawAPIKey(req);
+    const provider = (req.header("x-provider") || "openai").toLowerCase();
+    if (!apiKey) {
+      return res.status(400).json({ error: "Missing Authorization header" });
+    }
+    if (provider !== 'openai') {
+      return res.status(400).json({ error: "Audio transcription supported only for OpenAI" });
+    }
+    try {
+      const model = req.header('x-model') || 'whisper-1';
+      const contentType = req.header('content-type');
+      const audioBuffer = Buffer.from(req.body);
+      const boundary = "----OpenAIAudioBoundary" + Date.now();
+      const CRLF = "\r\n";
+      const filename = "audio.webm";
+      const preamble = Buffer.from(
+        `--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}` +
+        `Content-Type: ${contentType}${CRLF}${CRLF}`
+      );
+      const middle = Buffer.from(
+        `${CRLF}--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
+        `${model}${CRLF}` +
+        `--${boundary}--${CRLF}`
+      );
+      const formData = Buffer.concat([preamble, audioBuffer, middle]);
+      const transcriptRes = await fetch(
+        'https://api.openai.com/v1/audio/transcriptions',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          },
+          body: formData,
+        }
+      );
+      const data = await transcriptRes.json();
+      if (!transcriptRes.ok) {
+        return res.status(transcriptRes.status).json(data);
+      }
+      return res.json(data);
+    } catch (err) {
+      console.error('Error in /api/audio/transcriptions:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
 // Serve static front-end files
 app.use(express.static(path.join(__dirname)));
 

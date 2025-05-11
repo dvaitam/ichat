@@ -286,11 +286,109 @@ document.addEventListener('DOMContentLoaded', () => {
       alert(`Error fetching models: ${err.message}`);
     }
   }
+  // Removed unused handleAudioTranscription helper and duplicate variables
   // Handle send button click to perform completion/chat request
   const sendButton = document.getElementById('send-button');
   const promptTextarea = document.getElementById('prompt');
   const apiTypeSelect = document.getElementById('api-type');
   sendButton.addEventListener('click', sendRequest);
+  // Microphone button: record audio, transcribe via Whisper, and send transcription
+  const micButton = document.getElementById('mic-button');
+  let isRecording = false;
+  let mediaRecorder = null;
+  let audioStream = null;  // underlying MediaStream
+  let audioChunks = [];
+  micButton.addEventListener('click', async () => {
+    if (!isRecording) {
+      try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(audioStream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.start();
+        isRecording = true;
+        micButton.textContent = '⏹';
+        sendButton.disabled = true;
+      } catch (err) {
+        console.error('Could not start recording:', err);
+        alert('Could not start audio recording: ' + err.message);
+      }
+    } else {
+      mediaRecorder.stop();
+      mediaRecorder.onstop = async () => {
+        // Stop all audio tracks to release the microphone
+        if (audioStream) {
+          audioStream.getTracks().forEach(t => t.stop());
+          audioStream = null;
+        }
+        const audioBlob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+        // Determine if playback should be shown (only for Whisper)
+        const selectedModel = modelSelect.value;
+        if (selectedModel.toLowerCase().includes('whisper')) {
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audioDiv = document.createElement('div');
+          audioDiv.className = 'message user-message';
+          const audioEl = document.createElement('audio');
+          audioEl.controls = true;
+          audioEl.src = audioUrl;
+          audioDiv.appendChild(audioEl);
+          responseDiv.appendChild(audioDiv);
+          responseDiv.scrollTop = responseDiv.scrollHeight;
+        }
+        // Transcribe with Whisper
+        const apiKey = apiKeyInput.value.trim();
+        const provider = localStorage.getItem('provider') || 'openai';
+        const transcriptionModel = 'whisper-1';
+        try {
+          const res = await fetch('/api/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'X-Provider': provider,
+              'X-Model': transcriptionModel,
+              'Content-Type': audioBlob.type,
+            },
+            body: audioBlob,
+          });
+          if (!res.ok) throw new Error(`Transcription error: ${res.status} ${res.statusText}`);
+          const data = await res.json();
+          const transcription = data.text || '';
+          const selectedModel = modelSelect.value;
+          if (selectedModel.toLowerCase().includes('whisper')) {
+            // Whisper-only: show transcription as assistant response
+            const assistantDiv = document.createElement('div');
+            assistantDiv.className = 'message assistant-message';
+            assistantDiv.textContent = transcription;
+            responseDiv.appendChild(assistantDiv);
+            // Save conversation
+            const conv = conversations.find(c => c.id === currentConversationId);
+            if (conv) {
+              conv.messages.push({ role: 'assistant', content: transcription });
+              saveConversations();
+            }
+            responseDiv.scrollTop = responseDiv.scrollHeight;
+            // Reset UI
+            micButton.textContent = '🎤';
+            isRecording = false;
+            sendButton.disabled = false;
+          } else {
+            // Send transcription text to selected chat model
+            promptTextarea.value = transcription;
+            micButton.textContent = '🎤';
+            isRecording = false;
+            sendButton.disabled = false;
+            sendRequest();
+          }
+        } catch (err) {
+          console.error('Transcription error:', err);
+          alert(`Transcription error: ${err.message}`);
+          micButton.textContent = '🎤';
+          isRecording = false;
+          sendButton.disabled = false;
+        }
+      };
+    }
+  });
 
   async function sendRequest() {
     const apiKey = apiKeyInput.value.trim();
