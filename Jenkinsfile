@@ -2,7 +2,8 @@ pipeline {
     agent any
     environment {
         NVM_DIR = "/var/lib/jenkins/.nvm"
-        PATH = "/var/lib/jenkins/.nvm/versions/node/v22.15.0/bin:$PATH"
+        // Append Node bin to PATH without overriding (avoids JENKINS-41339 warning)
+        'PATH+EXTRA' = "/var/lib/jenkins/.nvm/versions/node/v22.15.0/bin"
         GIT_REF = sh(script: '''
             if [ -n "$GIT_REF" ]; then
                 echo "$GIT_REF" | sed 's#refs/tags/##' | sed 's#refs/heads/##'
