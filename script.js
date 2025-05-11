@@ -375,35 +375,70 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoEl = document.createElement('video');
     videoEl.controls = true;
     videoEl.style.maxWidth = '200px';
-    videoEl.src = URL.createObjectURL(file);
+    const fileUrl = URL.createObjectURL(file);
+    videoEl.src = fileUrl;
     userDiv.appendChild(videoEl);
     responseDiv.appendChild(userDiv);
     responseDiv.scrollTop = responseDiv.scrollHeight;
-    // Upload video to server
+    // Show loading
     const loadingDiv = document.createElement('div');
     loadingDiv.className = 'message loading';
-    loadingDiv.textContent = 'Uploading video...';
+    loadingDiv.textContent = 'Extracting and uploading frames...';
     responseDiv.appendChild(loadingDiv);
     try {
-      // Upload video via multipart/form-data
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
-      const { url } = await uploadRes.json();
-      const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
+      // Prepare processing video element
+      const procVideo = document.createElement('video');
+      procVideo.preload = 'metadata';
+      procVideo.muted = true;
+      procVideo.src = fileUrl;
+      await new Promise(resolve => procVideo.addEventListener('loadedmetadata', resolve));
+      const duration = procVideo.duration;
+      const fileSize = file.size;
+      const mb = 1024 * 1024;
+      let frameCount = Math.floor(fileSize / mb);
+      if (frameCount < 1) frameCount = 1;
+      const frameUrls = [];
+      for (let i = 1; i <= frameCount; i++) {
+        const ratio = (i * mb) / fileSize;
+        const time = Math.min(duration, ratio * duration);
+        const url = await new Promise((resolve, reject) => {
+          function onSeeked() {
+            const canvas = document.createElement('canvas');
+            canvas.width = procVideo.videoWidth;
+            canvas.height = procVideo.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(procVideo, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(async blob => {
+              try {
+                const form = new FormData();
+                form.append('file', blob, `frame-${i}.png`);
+                const res = await fetch('/api/upload', { method: 'POST', body: form });
+                if (!res.ok) throw new Error(`Upload error: ${res.status} ${res.statusText}`);
+                const json = await res.json();
+                resolve(json.url);
+              } catch (err) {
+                reject(err);
+              }
+            }, 'image/png');
+            procVideo.removeEventListener('seeked', onSeeked);
+          }
+          procVideo.addEventListener('seeked', onSeeked);
+          procVideo.currentTime = time;
+        });
+        const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
+        frameUrls.push(fullUrl);
+        responseDiv.scrollTop = responseDiv.scrollHeight;
+      }
       loadingDiv.remove();
-      // Append video markdown with full URL and send
-      const vidMarkdown = `\n![video](${fullUrl})`;
-      promptTextarea.value = (promptTextarea.value || '') + vidMarkdown;
+      const markdown = frameUrls.map((u, idx) => `\n![frame ${idx+1}](${u})`).join('');
+      promptTextarea.value = (promptTextarea.value || '') + markdown;
       promptTextarea.focus();
     } catch (err) {
-      console.error('Video upload error:', err);
+      console.error('Frame extraction/upload error:', err);
       alert(err.message);
       loadingDiv.remove();
+    } finally {
+      URL.revokeObjectURL(fileUrl);
     }
   });
   // Handle send button click to perform completion/chat request
