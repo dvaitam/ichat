@@ -300,11 +300,20 @@ app.post("/api/audio/transcriptions",
     }
     try {
       const model = req.header('x-model') || 'whisper-1';
-      const contentType = req.header('content-type');
+      // Extract content type header and default if missing
+      const contentTypeRaw = req.header('content-type') || '';
+      // Normalize MIME type (strip parameters)
+      const mimeType = contentTypeRaw.split(';')[0] || 'audio/webm';
+      // Determine file extension from normalized MIME type
+      let ext = mimeType.split('/')[1] || 'webm';
+      // Map Safari's 'x-m4a' or generic 'aac' to supported 'm4a'
+      if (ext === 'x-m4a' || ext === 'aac') ext = 'm4a';
+      // Construct normalized content-type for multipart
+      const contentType = `audio/${ext}`;
       const audioBuffer = Buffer.from(req.body);
       const boundary = "----OpenAIAudioBoundary" + Date.now();
       const CRLF = "\r\n";
-      const filename = "audio.webm";
+      const filename = `audio.${ext}`;
       const preamble = Buffer.from(
         `--${boundary}${CRLF}` +
         `Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}` +

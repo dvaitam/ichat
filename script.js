@@ -456,7 +456,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isRecording) {
       try {
         audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(audioStream);
+      // Choose a supported MIME type for recording
+      let recorderOptions = {};
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        recorderOptions.mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        recorderOptions.mimeType = 'audio/mp4';
+      }
+      mediaRecorder = new MediaRecorder(audioStream, recorderOptions);
         audioChunks = [];
         mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
         mediaRecorder.start();
@@ -468,14 +475,16 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Could not start audio recording: ' + err.message);
       }
     } else {
-      mediaRecorder.stop();
+      // Attach stop handler before stopping to ensure Safari fires it
       mediaRecorder.onstop = async () => {
         // Stop all audio tracks to release the microphone
         if (audioStream) {
           audioStream.getTracks().forEach(t => t.stop());
           audioStream = null;
         }
-        const audioBlob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+        const recordedType = audioChunks[0]?.type;
+        // Safari may produce an empty blob.type, so default to 'audio/mp4' for compatibility
+        const audioBlob = new Blob(audioChunks, { type: recordedType || 'audio/mp4' });
         // Determine if playback should be shown (only for Whisper)
         const selectedModel = modelSelect.value;
         if (selectedModel.toLowerCase().includes('whisper')) {
@@ -494,13 +503,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const provider = localStorage.getItem('provider') || 'openai';
         const transcriptionModel = 'whisper-1';
         try {
+          // Transcribe audio: ensure Content-Type is correct (fallback in place)
+          const mime = audioBlob.type || 'audio/mp4';
           const res = await fetch('/api/audio/transcriptions', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
               'X-Provider': provider,
               'X-Model': transcriptionModel,
-              'Content-Type': audioBlob.type,
+              'Content-Type': mime,
             },
             body: audioBlob,
           });
@@ -547,6 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
           sendButton.disabled = false;
         }
       };
+      mediaRecorder.stop();
     }
   });
 
