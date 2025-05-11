@@ -5,6 +5,9 @@ const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Directory to store uploaded images
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 // Helper to extract raw API key from Authorization header (strip 'Bearer ' if present)
 function getRawAPIKey(req) {
   const authHeader = req.header('authorization') || '';
@@ -283,6 +286,70 @@ app.post("/api/audio/transcriptions",
       return res.json(data);
     } catch (err) {
       console.error('Error in /api/audio/transcriptions:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+// Image upload endpoint: saves image and returns URL
+app.post("/api/upload",
+  express.raw({ type: (req) => req.headers['content-type']?.startsWith('image/'), limit: '20mb' }),
+  async (req, res) => {
+    try {
+      const contentType = req.header('content-type');
+      const ext = contentType.split('/')[1] || 'png';
+      const filename = `upload-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+      fs.writeFile(filePath, req.body, err => {
+        if (err) {
+          console.error('Error saving upload:', err);
+          return res.status(500).json({ error: 'Failed to save file' });
+        }
+        // Return public URL path
+        const url = `/uploads/${filename}`;
+        res.json({ url });
+      });
+    } catch (err) {
+      console.error('Error in /api/upload:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+// Serve static front-end files
+// Image description endpoint using Google Vision API (requires VISION_API_KEY env var)
+app.post(
+  "/api/image/describe",
+  express.raw({ type: (req) => req.headers['content-type']?.startsWith('image/'), limit: '10mb' }),
+  async (req, res) => {
+    const visionKey = process.env.VISION_API_KEY;
+    if (!visionKey) {
+      return res.status(500).json({ error: 'Missing VISION_API_KEY env var' });
+    }
+    try {
+      const imgBuffer = Buffer.from(req.body);
+      const imgBase64 = imgBuffer.toString('base64');
+      const visionUrl = `https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`;
+      const body = {
+        requests: [
+          {
+            image: { content: imgBase64 },
+            features: [ { type: 'LABEL_DETECTION', maxResults: 5 } ]
+          }
+        ]
+      };
+      const visionRes = await fetch(visionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const vdata = await visionRes.json();
+      if (!visionRes.ok) {
+        return res.status(visionRes.status).json(vdata);
+      }
+      const labels = (vdata.responses?.[0]?.labelAnnotations || []).map(a => a.description);
+      const description = labels.length ? labels.join(', ') : 'No labels detected';
+      return res.json({ description });
+    } catch (err) {
+      console.error('Error in /api/image/describe:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

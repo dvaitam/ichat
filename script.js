@@ -130,34 +130,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const textDiv = document.createElement('div');
         textDiv.className = 'text-block';
         // Split by bold, inline code, and markdown links
-        const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|\[[^\]]+\]\([^\)]+\))/g);
+        // Split by bold, inline code, markdown images, and links
+        const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|!\[[^\]]*\]\([^\)]+\)|\[[^\]]+\]\([^\)]+\))/g);
         parts.forEach(part => {
           if (!part) return;
           // Bold **text**
           if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
-            const innerText = part.slice(2, -2);
             const strong = document.createElement('strong');
-            // Support inline code within bold
-            const innerParts = innerText.split(/(`[^`]+`)/g);
-            innerParts.forEach(ip => {
-              if (!ip) return;
-              if (/^`[^`]+`$/.test(ip)) {
-                const codeElem = document.createElement('code');
-                codeElem.className = 'inline-code';
-                codeElem.textContent = ip.slice(1, -1);
-                strong.appendChild(codeElem);
-              } else {
-                strong.appendChild(document.createTextNode(ip));
-              }
-            });
+            strong.textContent = part.slice(2, -2);
             textDiv.appendChild(strong);
           } else if (/^`[^`]+`$/.test(part)) {
             const codeElem = document.createElement('code');
             codeElem.className = 'inline-code';
             codeElem.textContent = part.slice(1, -1);
             textDiv.appendChild(codeElem);
+          } else if (/^!\[[^\]]*\]\([^\)]+\)$/.test(part)) {
+            // Markdown image
+            const mImg = part.match(/^!\[([^\]]*)\]\(([^\)]+)\)$/);
+            if (mImg) {
+              const img = document.createElement('img');
+              img.src = mImg[2];
+              img.alt = mImg[1] || '';
+              img.style.maxWidth = '100%';
+              textDiv.appendChild(img);
+            }
           } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
-            // Markdown link [text](url)
+            // Markdown link
             const m = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);
             if (m) {
               const a = document.createElement('a');
@@ -249,8 +247,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const div = document.createElement('div');
         div.className = `message ${msg.role}-message`;
         responseDiv.appendChild(div);
-        if (msg.role === 'user') div.textContent = msg.content;
-        else renderMessage(div, msg.content);
+        // Render both user and assistant messages with markdown support
+        renderMessage(div, msg.content);
       });
       responseDiv.scrollTop = responseDiv.scrollHeight;
     }
@@ -310,6 +308,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   // Removed unused handleAudioTranscription helper and duplicate variables
+  // Image upload handler
+  const imgInput = document.getElementById('image-input');
+  const imgButton = document.getElementById('img-button');
+  imgButton.addEventListener('click', () => imgInput.click());
+  imgInput.addEventListener('change', async () => {
+    const file = imgInput.files[0];
+    if (!file) return;
+    // Show image preview in chat
+    const userDiv = document.createElement('div');
+    userDiv.className = 'message user-message';
+    const imgEl = document.createElement('img');
+    imgEl.src = URL.createObjectURL(file);
+    imgEl.style.maxWidth = '200px';
+    userDiv.appendChild(imgEl);
+    responseDiv.appendChild(userDiv);
+    responseDiv.scrollTop = responseDiv.scrollHeight;
+    // Upload image to server
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message loading';
+    loadingDiv.textContent = 'Uploading image...';
+    responseDiv.appendChild(loadingDiv);
+    try {
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
+      const { url } = await uploadRes.json();
+      loadingDiv.remove();
+      // Append image markdown with URL and send
+      const imgMarkdown = `\n![${file.name}](${url})`;
+      promptTextarea.value = (promptTextarea.value || '') + imgMarkdown;
+      promptTextarea.focus();
+      sendRequest();
+    } catch (err) {
+      console.error('Image upload error:', err);
+      alert(err.message);
+      loadingDiv.remove();
+    }
+  });
   // Handle send button click to perform completion/chat request
   const sendButton = document.getElementById('send-button');
   const promptTextarea = document.getElementById('prompt');
@@ -437,10 +476,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     sendButton.disabled = true;
-    // Append user message
+    // Append user message (supports image markdown)
     const userDiv = document.createElement('div');
     userDiv.className = 'message user-message';
-    userDiv.textContent = prompt;
+    // Render user content with markdown (images, links, bold, code)
+    renderMessage(userDiv, prompt);
     responseDiv.appendChild(userDiv);
     // Save user message to current conversation
     const userConv = conversations.find(c => c.id === currentConversationId);
