@@ -247,6 +247,44 @@ app.post("/api/chat/completions", async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+// Image generation endpoint: proxies to OpenAI Images API
+app.post("/api/images/generations", async (req, res) => {
+  const apiKey = getRawAPIKey(req);
+  const provider = (req.header("x-provider") || "openai").toLowerCase();
+  if (!apiKey) {
+    return res.status(400).json({ error: "Missing Authorization header" });
+  }
+  if (provider !== 'openai') {
+    return res.status(400).json({ error: "Image generations only supported for OpenAI" });
+  }
+  const { model, prompt, n, size } = req.body;
+  if (!model || !prompt) {
+    return res.status(400).json({ error: "Missing model or prompt" });
+  }
+  try {
+    const url = 'https://api.openai.com/v1/images/generations';
+    // Default to a supported size (1024x1024) if none provided
+    const body = {
+      model,
+      prompt,
+      n: typeof n === 'number' ? n : 1,
+      size: typeof size === 'string' ? size : '1024x1024'
+    };
+    const openaiRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    const data = await openaiRes.json();
+    if (!openaiRes.ok) {
+      return res.status(openaiRes.status).json(data);
+    }
+    return res.json(data);
+  } catch (err) {
+    console.error('Error in /api/images/generations:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Proxy to audio transcription endpoint (Whisper)
 app.post("/api/audio/transcriptions",

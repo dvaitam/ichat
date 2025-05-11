@@ -602,21 +602,76 @@ document.addEventListener('DOMContentLoaded', () => {
     // Scroll to bottom
     responseDiv.scrollTop = responseDiv.scrollHeight;
     try {
-      const url = apiType === 'chat'
-        ? '/api/chat/completions'
-        : '/api/completions';
-      const body = apiType === 'chat'
-        ? { model, messages: [{ role: 'user', content: prompt }] }
-        : { model, prompt };
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'X-Provider': localStorage.getItem('provider') || 'openai',
-        },
-        body: JSON.stringify(body),
-      });
+    // If using an image generation model, call the generations API
+    const imageModels = ['gpt-image-1', 'dall-e-2', 'dall-e-3'];
+    if (imageModels.includes(model.toLowerCase())) {
+      // Show loading
+      const loadingDivImg = loadingDiv;
+      try {
+        const genBody = { model, prompt, n: 1, size: '1024x1024' };
+        const resImg = await fetch('/api/images/generations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'X-Provider': localStorage.getItem('provider') || 'openai',
+          },
+          body: JSON.stringify(genBody),
+        });
+        const imgResult = await resImg.json();
+        if (!resImg.ok) {
+          const errMsg = (imgResult.error && imgResult.error.message) || imgResult.error || `${resImg.status} ${resImg.statusText}`;
+          throw new Error(`Image API error: ${errMsg}`);
+        }
+        loadingDivImg.remove();
+        const urls = Array.isArray(imgResult.data)
+          ? imgResult.data.map(d => d.url)
+          : [];
+        const assistantContainerImg = document.createElement('div');
+        assistantContainerImg.className = 'message assistant-message';
+        // Provider/model metadata
+        const providerName = localStorage.getItem('provider') || 'openai';
+        const metaDivImg = document.createElement('div');
+        metaDivImg.className = 'message-meta';
+        const capProviderImg = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+        metaDivImg.textContent = `${capProviderImg} • ${model}`;
+        assistantContainerImg.appendChild(metaDivImg);
+        responseDiv.appendChild(assistantContainerImg);
+        // Render each generated image
+        const markdownImgs = urls.map((u, idx) => `\n![generated ${idx+1}](${u})`).join('');
+        renderMessage(assistantContainerImg, markdownImgs);
+        // Save to conversation
+        const convImg = conversations.find(c => c.id === currentConversationId);
+        if (convImg) { convImg.messages.push({ role: 'assistant', content: markdownImgs }); saveConversations(); }
+      } catch (err) {
+        console.error('Error during image generation:', err);
+        if (loadingDivImg) loadingDivImg.remove();
+        const errDiv = document.createElement('div');
+        errDiv.className = 'message assistant-message';
+        errDiv.textContent = `Error: ${err.message}`;
+        responseDiv.appendChild(errDiv);
+        alert(`Error: ${err.message}`);
+      } finally {
+        sendButton.disabled = false;
+      }
+      return;
+    }
+    // Otherwise, use standard chat/completions API
+    const url = apiType === 'chat'
+      ? '/api/chat/completions'
+      : '/api/completions';
+    const body = apiType === 'chat'
+      ? { model, messages: [{ role: 'user', content: prompt }] }
+      : { model, prompt };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Provider': localStorage.getItem('provider') || 'openai',
+      },
+      body: JSON.stringify(body),
+    });
       if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
       }
