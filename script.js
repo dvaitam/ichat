@@ -129,9 +129,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render inline markdown: **bold** and `code`
         const textDiv = document.createElement('div');
         textDiv.className = 'text-block';
-        const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+        // Split by bold, inline code, and markdown links
+        const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|\[[^\]]+\]\([^\)]+\))/g);
         parts.forEach(part => {
           if (!part) return;
+          // Bold **text**
           if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
             const innerText = part.slice(2, -2);
             const strong = document.createElement('strong');
@@ -154,6 +156,17 @@ document.addEventListener('DOMContentLoaded', () => {
             codeElem.className = 'inline-code';
             codeElem.textContent = part.slice(1, -1);
             textDiv.appendChild(codeElem);
+          } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
+            // Markdown link [text](url)
+            const m = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);
+            if (m) {
+              const a = document.createElement('a');
+              a.href = m[2];
+              a.textContent = m[1];
+              a.target = '_blank';
+              a.rel = 'noopener';
+              textDiv.appendChild(a);
+            }
           } else {
             textDiv.appendChild(document.createTextNode(part));
           }
@@ -193,10 +206,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const tail = fullText.substring(lastIndex);
     if (tail) {
-      // Render inline markdown in tail: **bold** and `code`
+      // Render inline markdown in tail: **bold**, `code`, and [links](url)
       const textDiv = document.createElement('div');
       textDiv.className = 'text-block';
-      const parts = tail.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
+      const parts = tail.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|\[[^\]]+\]\([^\)]+\))/g);
       parts.forEach(part => {
         if (!part) return;
         if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
@@ -209,6 +222,16 @@ document.addEventListener('DOMContentLoaded', () => {
           codeElem.className = 'inline-code';
           codeElem.textContent = part.slice(1, -1);
           textDiv.appendChild(codeElem);
+        } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
+          const m = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);
+          if (m) {
+            const a = document.createElement('a');
+            a.href = m[2];
+            a.textContent = m[1];
+            a.target = '_blank';
+            a.rel = 'noopener';
+            textDiv.appendChild(a);
+          }
         } else {
           textDiv.appendChild(document.createTextNode(part));
         }
@@ -358,7 +381,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Whisper-only: show transcription as assistant response
             const assistantDiv = document.createElement('div');
             assistantDiv.className = 'message assistant-message';
-            assistantDiv.textContent = transcription;
+            // Provider/model metadata for transcription
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'message-meta';
+            const capProv = provider.charAt(0).toUpperCase() + provider.slice(1);
+            metaDiv.textContent = `${capProv} • ${transcriptionModel}`;
+            assistantDiv.appendChild(metaDiv);
+            assistantDiv.appendChild(document.createTextNode(transcription));
             responseDiv.appendChild(assistantDiv);
             // Save conversation
             const conv = conversations.find(c => c.id === currentConversationId);
@@ -470,122 +499,20 @@ document.addEventListener('DOMContentLoaded', () => {
       loadingDiv.remove();
       const assistantContainer = document.createElement('div');
       assistantContainer.className = 'message assistant-message';
+      // Provider/model metadata
+      const providerName = localStorage.getItem('provider') || 'openai';
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'message-meta';
+      const capProvider = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+      metaDiv.textContent = `${capProvider} • ${model}`;
+      assistantContainer.appendChild(metaDiv);
       responseDiv.appendChild(assistantContainer);
       const fullText = text || JSON.stringify(result, null, 2);
       // Save assistant message to current conversation
       const conv = conversations.find(c => c.id === currentConversationId);
       if (conv) { conv.messages.push({ role: 'assistant', content: fullText }); saveConversations(); }
-      const codeFenceRE = /```([\s\S]*?)```/g;
-      let lastIndex = 0;
-      let match;
-      while ((match = codeFenceRE.exec(fullText)) !== null) {
-        const plainSegment = fullText.substring(lastIndex, match.index);
-        if (plainSegment) {
-          // Render inline markdown: **bold** and `code`
-          const textDiv = document.createElement('div');
-          textDiv.className = 'text-block';
-          const parts = plainSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
-          parts.forEach(part => {
-            if (!part) return;
-            if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
-              // Bold with potential inline code
-              const innerText = part.slice(2, -2);
-              const strong = document.createElement('strong');
-              const innerParts = innerText.split(/(`[^`]+`)/g);
-              innerParts.forEach(ip => {
-                if (!ip) return;
-                if (/^`[^`]+`$/.test(ip)) {
-                  const codeElem = document.createElement('code');
-                  codeElem.className = 'inline-code';
-                  codeElem.textContent = ip.slice(1, -1);
-                  strong.appendChild(codeElem);
-                } else {
-                  strong.appendChild(document.createTextNode(ip));
-                }
-              });
-              textDiv.appendChild(strong);
-            } else if (/^`[^`]+`$/.test(part)) {
-              const codeElem = document.createElement('code');
-              codeElem.className = 'inline-code';
-              codeElem.textContent = part.slice(1, -1);
-              textDiv.appendChild(codeElem);
-            } else {
-              textDiv.appendChild(document.createTextNode(part));
-            }
-          });
-          assistantContainer.appendChild(textDiv);
-        }
-        // Extract code fence content and remove surrounding newlines
-        let codeContent = match[1].replace(/^\n|\n$/g, '');
-        // Split off the first line (e.g., language specifier or header)
-        const lines = codeContent.split('\n');
-        const firstLine = lines.shift();
-        const restContent = lines.join('\n');
-        // Render code block with header (first line) and copy button
-        const container = document.createElement('div');
-        container.className = 'code-block';
-        if (firstLine != null) {
-          const headerDiv = document.createElement('div');
-          headerDiv.className = 'code-first-line';
-          headerDiv.textContent = firstLine;
-          const button = document.createElement('button');
-          button.className = 'copy-button';
-          button.innerHTML = COPY_ICON;
-          button.setAttribute('aria-label', 'Copy to clipboard');
-          button.addEventListener('click', () => {
-            copyTextToClipboard(restContent)
-              .then(() => { button.innerHTML = CHECK_ICON; setTimeout(() => { button.innerHTML = COPY_ICON; }, 2000); })
-              .catch(err => { console.error('Copy to clipboard failed:', err); });
-          });
-          headerDiv.appendChild(button);
-          container.appendChild(headerDiv);
-        }
-        const pre = document.createElement('pre');
-        const codeElem = document.createElement('code');
-        codeElem.textContent = restContent;
-        pre.appendChild(codeElem);
-        container.appendChild(pre);
-        assistantContainer.appendChild(container);
-        lastIndex = codeFenceRE.lastIndex;
-      }
-      const tailSegment = fullText.substring(lastIndex);
-      if (tailSegment) {
-        // Render inline markdown in tailSegment: **bold** and `code`
-        const textDiv = document.createElement('div');
-        textDiv.className = 'text-block';
-        const parts = tailSegment.split(/(\*\*[\s\S]+?\*\*|`[^`]+`)/g);
-        parts.forEach(part => {
-          if (!part) return;
-          if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
-            // Bold with potential inline code
-            const innerText = part.slice(2, -2);
-            const strong = document.createElement('strong');
-            const innerParts = innerText.split(/(`[^`]+`)/g);
-            innerParts.forEach(ip => {
-              if (!ip) return;
-              if (/^`[^`]+`$/.test(ip)) {
-                const codeElem = document.createElement('code');
-                codeElem.className = 'inline-code';
-                codeElem.textContent = ip.slice(1, -1);
-                strong.appendChild(codeElem);
-              } else {
-                strong.appendChild(document.createTextNode(ip));
-              }
-            });
-            textDiv.appendChild(strong);
-          } else if (/^`[^`]+`$/.test(part)) {
-            const codeElem = document.createElement('code');
-            codeElem.className = 'inline-code';
-            codeElem.textContent = part.slice(1, -1);
-            textDiv.appendChild(codeElem);
-          } else {
-            textDiv.appendChild(document.createTextNode(part));
-          }
-        });
-        assistantContainer.appendChild(textDiv);
-      }
-      // Scroll to bottom after rendering
-      responseDiv.scrollTop = responseDiv.scrollHeight;
+      // Render all content with markdown, code fences, and links
+      renderMessage(assistantContainer, fullText);
     } catch (err) {
       console.error('Error during API request:', err);
       // Remove loading indicator if present
