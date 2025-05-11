@@ -290,15 +290,16 @@ app.post("/api/audio/transcriptions",
     }
   }
 );
-// Image upload endpoint: saves image and returns URL
 // File upload endpoint: saves image or video and returns URL
+// Increase raw body size limit for large video files (default 50mb → 200mb or override via UPLOAD_LIMIT env)
+const uploadLimit = process.env.UPLOAD_LIMIT || '200mb';
 app.post("/api/upload",
   express.raw({
     type: (req) => {
       const ct = req.headers['content-type'] || '';
       return ct.startsWith('image/') || ct.startsWith('video/');
     },
-    limit: '50mb'
+    limit: uploadLimit
   }),
   async (req, res) => {
     try {
