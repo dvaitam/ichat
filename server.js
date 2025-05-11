@@ -291,8 +291,15 @@ app.post("/api/audio/transcriptions",
   }
 );
 // Image upload endpoint: saves image and returns URL
+// File upload endpoint: saves image or video and returns URL
 app.post("/api/upload",
-  express.raw({ type: (req) => req.headers['content-type']?.startsWith('image/'), limit: '20mb' }),
+  express.raw({
+    type: (req) => {
+      const ct = req.headers['content-type'] || '';
+      return ct.startsWith('image/') || ct.startsWith('video/');
+    },
+    limit: '50mb'
+  }),
   async (req, res) => {
     try {
       const contentType = req.header('content-type');

@@ -145,14 +145,25 @@ document.addEventListener('DOMContentLoaded', () => {
             codeElem.textContent = part.slice(1, -1);
             textDiv.appendChild(codeElem);
           } else if (/^!\[[^\]]*\]\([^\)]+\)$/.test(part)) {
-            // Markdown image
+            // Markdown media (image or video)
             const mImg = part.match(/^!\[([^\]]*)\]\(([^\)]+)\)$/);
             if (mImg) {
-              const img = document.createElement('img');
-              img.src = mImg[2];
-              img.alt = mImg[1] || '';
-              img.style.maxWidth = '100%';
-              textDiv.appendChild(img);
+              const url = mImg[2];
+              const alt = mImg[1] || '';
+              const lower = url.toLowerCase();
+              if (lower.match(/\.(mp4|webm|ogg)(?:$|\?)/)) {
+                const vid = document.createElement('video');
+                vid.controls = true;
+                vid.src = url;
+                vid.style.maxWidth = '100%';
+                textDiv.appendChild(vid);
+              } else {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = alt;
+                img.style.maxWidth = '100%';
+                textDiv.appendChild(img);
+              }
             }
           } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
             // Markdown link
@@ -337,14 +348,56 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
       const { url } = await uploadRes.json();
+      const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
       loadingDiv.remove();
-      // Append image markdown with URL and send
-      const imgMarkdown = `\n![${file.name}](${url})`;
+      // Append image markdown with full URL and send
+      const imgMarkdown = `\n![${file.name}](${fullUrl})`;
       promptTextarea.value = (promptTextarea.value || '') + imgMarkdown;
       promptTextarea.focus();
-      sendRequest();
     } catch (err) {
       console.error('Image upload error:', err);
+      alert(err.message);
+      loadingDiv.remove();
+    }
+  });
+  // Video upload handler
+  const videoInput = document.getElementById('video-input');
+  const videoButton = document.getElementById('video-button');
+  videoButton.addEventListener('click', () => videoInput.click());
+  videoInput.addEventListener('change', async () => {
+    const file = videoInput.files[0];
+    if (!file) return;
+    // Show video preview
+    const userDiv = document.createElement('div');
+    userDiv.className = 'message user-message';
+    const videoEl = document.createElement('video');
+    videoEl.controls = true;
+    videoEl.style.maxWidth = '200px';
+    videoEl.src = URL.createObjectURL(file);
+    userDiv.appendChild(videoEl);
+    responseDiv.appendChild(userDiv);
+    responseDiv.scrollTop = responseDiv.scrollHeight;
+    // Upload video to server
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message loading';
+    loadingDiv.textContent = 'Uploading video...';
+    responseDiv.appendChild(loadingDiv);
+    try {
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error(`Upload error: ${uploadRes.status} ${uploadRes.statusText}`);
+      const { url } = await uploadRes.json();
+      const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
+      loadingDiv.remove();
+      // Append video markdown with full URL and send
+      const vidMarkdown = `\n![video](${fullUrl})`;
+      promptTextarea.value = (promptTextarea.value || '') + vidMarkdown;
+      promptTextarea.focus();
+    } catch (err) {
+      console.error('Video upload error:', err);
       alert(err.message);
       loadingDiv.remove();
     }
