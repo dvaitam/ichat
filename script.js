@@ -412,6 +412,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!modelSelect.value && modelSelect.options.length > 0) {
         modelSelect.selectedIndex = 0;
       }
+      // Trigger change to enforce chat mode for audio-preview models
+      modelSelect.dispatchEvent(new Event('change'));
     } catch (err) {
       console.error('Error fetching models:', err);
       modelSelect.innerHTML = '<option disabled selected>Failed to load models</option>';
@@ -545,6 +547,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const sendButton = document.getElementById('send-button');
   const promptTextarea = document.getElementById('prompt');
   const apiTypeSelect = document.getElementById('api-type');
+  // If audio-preview model is selected, force chat mode and disable completion option
+  modelSelect.addEventListener('change', () => {
+    const isAudioPreview = modelSelect.value.toLowerCase().startsWith('gpt-4o-audio-preview');
+    const completionOption = apiTypeSelect.querySelector('option[value="completion"]');
+    if (isAudioPreview) {
+      apiTypeSelect.value = 'chat';
+      if (completionOption) completionOption.disabled = true;
+    } else {
+      if (completionOption) completionOption.disabled = false;
+    }
+  });
   sendButton.addEventListener('click', sendRequest);
   // Microphone button: record audio, transcribe via Whisper, and send transcription
   const micButton = document.getElementById('mic-button');
@@ -675,7 +688,9 @@ document.addEventListener('DOMContentLoaded', () => {
               model: selectedModelRaw,
               messages: [ { role: 'user', content: userMessageParts } ],
               modalities: ['text', 'audio'],
-              audio: { voice: 'alloy', format: 'wav' }
+              audio: { voice: 'alloy', format: 'wav' },
+              // Request non-streaming (full) audio to avoid cutoff
+              stream: false
             };
             const res = await fetch('/api/chat/completions', {
               method: 'POST',
@@ -974,20 +989,28 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     // Otherwise, use standard chat/completions API
-    const url = apiType === 'chat'
-      ? '/api/chat/completions'
-      : '/api/completions';
+    // Determine request URL and payload. For audio-preview models, always use chat endpoint
+    let actualUrl;
     let body;
-    if (apiType === 'chat') {
+    const isAudioPreview = model.toLowerCase().startsWith('gpt-4o-audio-preview');
+    if (isAudioPreview) {
+      actualUrl = '/api/chat/completions';
+      // Wrap text prompt in content parts, request audio output
+      body = {
+        model,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+        modalities: ['text', 'audio'],
+        audio: { voice: 'alloy', format: 'wav' },
+        stream: false
+      };
+    } else if (apiType === 'chat') {
+      actualUrl = '/api/chat/completions';
       body = { model, messages: [{ role: 'user', content: prompt }] };
-      if (model.toLowerCase().startsWith('gpt-4o-audio-preview')) {
-        body.modalities = ['text', 'audio'];
-        body.audio = { voice: 'alloy', format: 'wav' };
-      }
     } else {
+      actualUrl = '/api/completions';
       body = { model, prompt };
     }
-    const res = await fetch(url, {
+    const res = await fetch(actualUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1007,9 +1030,9 @@ document.addEventListener('DOMContentLoaded', () => {
         assistantContent = result.choices?.[0]?.text;
       }
 
-      // Check for standalone audio object in choice
+      // Check for standalone audio object in choice (also for audio-preview models)
       let standaloneAudio = null;
-      if (apiType === 'chat') {
+      if (apiType === 'chat' || isAudioPreview) {
         const choiceAudio = result.choices?.[0]?.audio || result.choices?.[0]?.message?.audio;
         if (choiceAudio && (choiceAudio.url || choiceAudio.data)) {
           standaloneAudio = choiceAudio;

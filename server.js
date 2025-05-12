@@ -350,6 +350,33 @@ app.post("/api/chat/completions", async (req, res) => {
             }
           }
         });
+        // Fetch any external audio URLs (e.g. for gpt-4o-audio-preview) and download full audio locally
+        for (const choice of data.choices) {
+          const audioObj = choice.audio || choice.message?.audio;
+          if (audioObj && typeof audioObj.url === 'string' && audioObj.url.startsWith('http')) {
+            try {
+              // Determine file extension
+              let ext = (audioObj.format || 'wav').toLowerCase();
+              if (ext === 'mpeg') ext = 'mp3';
+              if (!['wav','mp3'].includes(ext)) ext = 'wav';
+              const externalUrl = audioObj.url;
+              const audioResp = await fetch(externalUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
+              if (!audioResp.ok) {
+                console.error('[OpenAI] Failed to fetch external audio', audioResp.status, externalUrl);
+              } else {
+                const buffer = await audioResp.buffer();
+                const filename = `assistant-audio-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+                const filePath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filePath, buffer);
+                console.log('[OpenAI] Downloaded and saved external audio to', filePath);
+                // Point client at our local file instead
+                audioObj.url = `/uploads/${filename}`;
+              }
+            } catch (err) {
+              console.error('[OpenAI] Error downloading external audio:', err);
+            }
+          }
+        }
       }
     } catch (audioErr) {
       console.error('Error processing assistant audio content:', audioErr);
