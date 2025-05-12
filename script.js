@@ -212,10 +212,9 @@ document.addEventListener('DOMContentLoaded', () => {
               const lower = url.toLowerCase();
               if (lower.match(/\.(mp3|wav|m4a|ogg|webm)(?:$|\?)/)) {
                 // Audio element
-                const audio = document.createElement('audio');
-                audio.controls = true;
-                audio.autoplay = true;
-                audio.src = url;
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = url;
                 // Replay button
                 const replayBtn = document.createElement('button');
                 replayBtn.textContent = '↻';
@@ -290,10 +289,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const tail = fullText.substring(lastIndex);
     if (tail) {
-      // Render inline markdown in tail: **bold**, `code`, and [links](url)
+      // Render inline markdown in tail: **bold**, `code`, image/audio/video, and [links](url)
       const textDiv = document.createElement('div');
       textDiv.className = 'text-block';
-      const parts = tail.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|\[[^\]]+\]\([^\)]+\))/g);
+      const parts = tail.split(/(\*\*[\s\S]+?\*\*|`[^`]+`|!\[[^\]]*\]\([^\)]+\)|\[[^\]]+\]\([^\)]+\))/g);
       parts.forEach(part => {
         if (!part) return;
         if (/^\*\*[\s\S]+?\*\*$/.test(part)) {
@@ -306,16 +305,50 @@ document.addEventListener('DOMContentLoaded', () => {
           codeElem.className = 'inline-code';
           codeElem.textContent = part.slice(1, -1);
           textDiv.appendChild(codeElem);
-        } else if (/^\[([^\]]+)\]\(([^\)]+)\)$/.test(part)) {
+        } else if (/^!\[[^\]]*\]\([^\)]+\)$/.test(part)) {
+          // Inline media: image, audio, or video
+          const mImg = part.match(/^!\[([^\]]*)\]\(([^\)]+)\)$/);
+          if (mImg) {
+            const url = mImg[2];
+            const alt = mImg[1] || '';
+            const lower = url.toLowerCase();
+            if (lower.match(/\.(mp3|wav|m4a|ogg|webm)(?:$|\?)/)) {
+            const audio = document.createElement('audio');
+              audio.controls = true;
+              audio.src = url;
+              const replayBtn = document.createElement('button');
+              replayBtn.textContent = '↻';
+              replayBtn.title = 'Replay audio';
+              replayBtn.style.marginLeft = '6px';
+              replayBtn.addEventListener('click', () => { audio.currentTime = 0; audio.play(); });
+              const wrapper = document.createElement('div');
+              wrapper.appendChild(audio);
+              wrapper.appendChild(replayBtn);
+              textDiv.appendChild(wrapper);
+            } else if (lower.match(/\.(mp4|webm|ogg)(?:$|\?)/)) {
+              const vid = document.createElement('video');
+              vid.controls = true;
+              vid.src = url;
+              vid.style.maxWidth = '100%';
+              textDiv.appendChild(vid);
+            } else {
+              const img = document.createElement('img');
+              img.src = url;
+              img.alt = alt;
+              img.style.maxWidth = '100%';
+              textDiv.appendChild(img);
+            }
+          }
+        } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
+          // Markdown link
           const m = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);
           if (m) {
             const display = m[1];
             const url = m[2];
             const lower = url.toLowerCase();
             if (display === 'audio' || lower.match(/\.(mp3|wav|m4a|ogg|webm)(?:$|\?)/)) {
-              const audio = document.createElement('audio');
+            const audio = document.createElement('audio');
               audio.controls = true;
-              audio.autoplay = true;
               audio.src = url;
               const replayBtn = document.createElement('button');
               replayBtn.textContent = '↻';
@@ -557,7 +590,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const apiTypeSelect = document.getElementById('api-type');
   // If audio-preview model is selected, force chat mode and disable completion option
   modelSelect.addEventListener('change', () => {
-    const isAudioPreview = modelSelect.value.toLowerCase().startsWith('gpt-4o-audio-preview');
+    const modelLower = modelSelect.value.toLowerCase();
+    const isAudioPreview = modelLower.startsWith('gpt-4o-audio-preview') || modelLower.startsWith('gpt-4o-mini-audio-preview');
     const completionOption = apiTypeSelect.querySelector('option[value="completion"]');
     if (isAudioPreview) {
       apiTypeSelect.value = 'chat';
@@ -624,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Branch logic based on selected model
-        if (selectedModel === 'gpt-4o-audio-preview') {
+        if (selectedModel === 'gpt-4o-audio-preview' || selectedModel === 'gpt-4o-mini-audio-preview') {
           // 1. Visual feedback: show the recorded audio
           appendUserAudioPreview(audioBlob);
 
@@ -736,24 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rawUrl = part.audio?.url || part.audio_url?.url || part.audio_url || part.input_audio?.url || part.input_audio || part.source || '';
                   if (!rawUrl) return;
                   const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
-                  const audioEl = document.createElement('audio');
-                  audioEl.controls = true;
-                  audioEl.autoplay = true;
-                  audioEl.src = audioUrl;
-
-                  // Replay button
-                  const replayBtn = document.createElement('button');
-                  replayBtn.textContent = '↻';
-                  replayBtn.title = 'Replay audio';
-                  replayBtn.style.marginLeft = '6px';
-                  replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
-
-                  const audioWrapper = document.createElement('div');
-                  audioWrapper.appendChild(audioEl);
-                  audioWrapper.appendChild(replayBtn);
-                  assistantContainer.appendChild(audioWrapper);
-
-                  // Also include markdown placeholder for persistence
+                  // Include markdown placeholder for persistence
                   combinedText += `\n![audio](${audioUrl})`;
                 }
               });
@@ -777,30 +794,20 @@ document.addEventListener('DOMContentLoaded', () => {
               let rendered = false;
               if (standalone && standalone.url) {
                 const audioUrl = standalone.url.startsWith('http') ? standalone.url : (window.location.origin + standalone.url);
-                const audioEl = document.createElement('audio');
-                audioEl.controls = true;
-                audioEl.autoplay = true;
-                audioEl.src = audioUrl;
 
-                const replayBtn = document.createElement('button');
-                replayBtn.textContent = '↻';
-                replayBtn.title = 'Replay audio';
-                replayBtn.style.marginLeft = '6px';
-                replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
-
-                const wrapper = document.createElement('div');
-                wrapper.appendChild(audioEl);
-                wrapper.appendChild(replayBtn);
-                assistantContainer.appendChild(wrapper);
-
-                renderMessage(assistantContainer, standalone.transcript || '');
+                // Render transcript text and inline audio from standalone response
+                const transcriptText = (standalone.transcript || '').trim();
+                let contentToRender = transcriptText;
+                // Append audio markdown placeholder
+                contentToRender += (transcriptText ? '\n' : '') + `![audio](${audioUrl})`;
+                renderMessage(assistantContainer, contentToRender);
 
                 // Save conv
                 const conv = conversations.find(c => c.id === currentConversationId);
                 if (conv) {
                   conv.messages.push({
                     role: 'assistant',
-                    content: standalone.transcript || '',
+                    content: contentToRender,
                     provider,
                     model: selectedModelRaw,
                   });
@@ -1029,7 +1036,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Determine request URL and payload. For audio-preview models, always use chat endpoint
     let actualUrl;
     let body;
-    const isAudioPreview = model.toLowerCase().startsWith('gpt-4o-audio-preview');
+    const modelLower = model.toLowerCase();
+    const isAudioPreview = modelLower.startsWith('gpt-4o-audio-preview') || modelLower.startsWith('gpt-4o-mini-audio-preview');
     if (isAudioPreview) {
       actualUrl = '/api/chat/completions';
       // Wrap text prompt in content parts, request audio output
@@ -1108,7 +1116,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
             const audioEl = document.createElement('audio');
             audioEl.controls = true;
-            audioEl.autoplay = true;
             audioEl.src = audioUrl;
 
             const replayBtn = document.createElement('button');
@@ -1144,7 +1151,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
             const audioEl = document.createElement('audio');
             audioEl.controls = true;
-            audioEl.autoplay = true;
             audioEl.src = audioUrl;
 
             const replayBtn = document.createElement('button');
