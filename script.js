@@ -25,6 +25,65 @@ document.addEventListener('DOMContentLoaded', () => {
       return Promise.reject(err);
     }
   }
+
+  // Helper: convert arbitrary audio Blob (e.g., webm/opus) to WAV (PCM 16-bit) base64
+  async function convertBlobToWav(blob) {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+    const numChannels = decoded.numberOfChannels;
+    const sampleRate = decoded.sampleRate;
+    const samples = decoded.length;
+
+    // Interleave channels
+    const interleaved = new Int16Array(samples * numChannels);
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = decoded.getChannelData(ch);
+      for (let i = 0; i < samples; i++) {
+        let sample = channelData[i];
+        sample = Math.max(-1, Math.min(1, sample));
+        interleaved[i * numChannels + ch] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      }
+    }
+
+    const wavBuffer = new ArrayBuffer(44 + interleaved.length * 2);
+    const view = new DataView(wavBuffer);
+
+    function writeString(view, offset, str) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    }
+
+    let offset = 0;
+    writeString(view, offset, 'RIFF'); offset += 4;
+    view.setUint32(offset, 36 + interleaved.length * 2, true); offset += 4;
+    writeString(view, offset, 'WAVE'); offset += 4;
+    writeString(view, offset, 'fmt '); offset += 4;
+    view.setUint32(offset, 16, true); offset += 4; // Subchunk1Size (16 for PCM)
+    view.setUint16(offset, 1, true); offset += 2;  // AudioFormat (1 = PCM)
+    view.setUint16(offset, numChannels, true); offset += 2;
+    view.setUint32(offset, sampleRate, true); offset += 4;
+    view.setUint32(offset, sampleRate * numChannels * 2, true); offset += 4; // ByteRate
+    view.setUint16(offset, numChannels * 2, true); offset += 2; // BlockAlign
+    view.setUint16(offset, 16, true); offset += 2; // BitsPerSample
+    writeString(view, offset, 'data'); offset += 4;
+    view.setUint32(offset, interleaved.length * 2, true); offset += 4;
+
+    // PCM samples
+    for (let i = 0; i < interleaved.length; i++, offset += 2) {
+      view.setInt16(offset, interleaved[i], true);
+    }
+
+    const wavBlob = new Blob([view], { type: 'audio/wav' });
+    const base64 = await new Promise(res => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        res(dataUrl.split(',')[1]);
+      };
+      reader.readAsDataURL(wavBlob);
+    });
+    return { base64, fmt: 'wav' };
+  }
   // Icon definitions for copy button
   const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4C2.897 1 2 1.897 2 3v12h2V3h12V1z"/><path d="M20 5H8C6.897 5 6 5.897 6 7v14c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM20 21H8V7h12v14z"/></svg>`;
   const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M20.285 6.707l-11.025 11.025-5.545-5.545 1.414-1.414 4.131 4.131 9.611-9.611z"/></svg>`;
@@ -151,7 +210,23 @@ document.addEventListener('DOMContentLoaded', () => {
               const url = mImg[2];
               const alt = mImg[1] || '';
               const lower = url.toLowerCase();
-              if (lower.match(/\.(mp4|webm|ogg)(?:$|\?)/)) {
+              if (lower.match(/\.(mp3|wav|m4a|ogg|webm)(?:$|\?)/)) {
+                // Audio element
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.autoplay = true;
+                audio.src = url;
+                // Replay button
+                const replayBtn = document.createElement('button');
+                replayBtn.textContent = '↻';
+                replayBtn.title = 'Replay audio';
+                replayBtn.style.marginLeft = '6px';
+                replayBtn.addEventListener('click', () => { audio.currentTime = 0; audio.play(); });
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(audio);
+                wrapper.appendChild(replayBtn);
+                textDiv.appendChild(wrapper);
+              } else if (lower.match(/\.(mp4|webm|ogg)(?:$|\?)/)) {
                 const vid = document.createElement('video');
                 vid.controls = true;
                 vid.src = url;
@@ -231,15 +306,40 @@ document.addEventListener('DOMContentLoaded', () => {
           codeElem.className = 'inline-code';
           codeElem.textContent = part.slice(1, -1);
           textDiv.appendChild(codeElem);
-        } else if (/^\[[^\]]+\]\([^\)]+\)$/.test(part)) {
+        } else if (/^\[([^\]]+)\]\(([^\)]+)\)$/.test(part)) {
           const m = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);
           if (m) {
-            const a = document.createElement('a');
-            a.href = m[2];
-            a.textContent = m[1];
-            a.target = '_blank';
-            a.rel = 'noopener';
-            textDiv.appendChild(a);
+            const display = m[1];
+            const url = m[2];
+            const lower = url.toLowerCase();
+            if (display === 'audio' || lower.match(/\.(mp3|wav|m4a|ogg|webm)(?:$|\?)/)) {
+              const audio = document.createElement('audio');
+              audio.controls = true;
+              audio.autoplay = true;
+              audio.src = url;
+              const replayBtn = document.createElement('button');
+              replayBtn.textContent = '↻';
+              replayBtn.title = 'Replay audio';
+              replayBtn.style.marginLeft = '6px';
+              replayBtn.addEventListener('click', () => { audio.currentTime = 0; audio.play(); });
+              const wrapper = document.createElement('div');
+              wrapper.appendChild(audio);
+              wrapper.appendChild(replayBtn);
+              textDiv.appendChild(wrapper);
+            } else if (lower.match(/\.(mp4|webm|ogg)(?:$|\?)/)) {
+              const vid = document.createElement('video');
+              vid.controls = true;
+              vid.src = url;
+              vid.style.maxWidth = '100%';
+              textDiv.appendChild(vid);
+            } else {
+              const a = document.createElement('a');
+              a.href = url;
+              a.textContent = display;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              textDiv.appendChild(a);
+            }
           }
         } else {
           textDiv.appendChild(document.createTextNode(part));
@@ -485,10 +585,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const recordedType = audioChunks[0]?.type;
         // Safari may produce an empty blob.type, so default to 'audio/mp4' for compatibility
         const audioBlob = new Blob(audioChunks, { type: recordedType || 'audio/mp4' });
-        // Determine if playback should be shown (only for Whisper)
-        const selectedModel = modelSelect.value;
-        if (selectedModel.toLowerCase().includes('whisper')) {
-          const audioUrl = URL.createObjectURL(audioBlob);
+
+        const selectedModelRaw = modelSelect.value || '';
+        const selectedModel = selectedModelRaw.toLowerCase();
+
+        // Helper to append user audio preview to chat
+        function appendUserAudioPreview(blob) {
+          const audioUrl = URL.createObjectURL(blob);
           const audioDiv = document.createElement('div');
           audioDiv.className = 'message user-message';
           const audioEl = document.createElement('audio');
@@ -498,61 +601,263 @@ document.addEventListener('DOMContentLoaded', () => {
           responseDiv.appendChild(audioDiv);
           responseDiv.scrollTop = responseDiv.scrollHeight;
         }
-        // Transcribe with Whisper
-        const apiKey = apiKeyInput.value.trim();
-        const provider = localStorage.getItem('provider') || 'openai';
-        const transcriptionModel = 'whisper-1';
-        try {
-          // Transcribe audio: ensure Content-Type is correct (fallback in place)
-          const mime = audioBlob.type || 'audio/mp4';
-          const res = await fetch('/api/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'X-Provider': provider,
-              'X-Model': transcriptionModel,
-              'Content-Type': mime,
-            },
-            body: audioBlob,
+
+        // Branch logic based on selected model
+        if (selectedModel === 'gpt-4o-audio-preview') {
+          // 1. Visual feedback: show the recorded audio
+          appendUserAudioPreview(audioBlob);
+
+          // Save user audio message to conversation (store as markdown placeholder)
+
+
+          // 2. Build chat completion with audio
+          const apiKey = apiKeyInput.value.trim();
+          const provider = localStorage.getItem('provider') || 'openai';
+          if (!apiKey) {
+            alert('Please enter your API key.');
+            resetRecordingUI();
+            return;
+          }
+
+          // Prepare audio payload for GPT-4o preview
+          let mimeType = audioBlob.type || 'audio/webm';
+          let format = (mimeType.split('/')[1] || '').split(';')[0]; // strip codec suffix
+          if (format === 'mpeg') format = 'mp3';
+          if (format === 'x-wav') format = 'wav';
+
+          let b64data;
+          try {
+            if (['wav', 'mp3'].includes(format)) {
+              const arrayBuffer = await audioBlob.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuffer);
+              let binary = '';
+              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+              b64data = btoa(binary);
+            } else {
+              // Convert unsupported format to WAV (16-bit PCM)
+              const { base64, fmt } = await convertBlobToWav(audioBlob);
+              b64data = base64;
+              format = fmt; // 'wav'
+            }
+          } catch (convErr) {
+            console.error('Audio encode error:', convErr);
+            alert('Failed to encode audio data');
+            resetRecordingUI();
+            return;
+          }
+
+          const userMessageParts = [];
+          // Include optional text prompt from textarea if provided
+          const anyText = promptTextarea.value.trim();
+          if (anyText) {
+            userMessageParts.push({ type: 'text', text: anyText });
+          }
+          userMessageParts.push({
+            type: 'input_audio',
+            input_audio: {
+              data: b64data,
+              format: format,
+            }
           });
-          if (!res.ok) throw new Error(`Transcription error: ${res.status} ${res.statusText}`);
-          const data = await res.json();
-          const transcription = data.text || '';
-          const selectedModel = modelSelect.value;
-          if (selectedModel.toLowerCase().includes('whisper')) {
-            // Whisper-only: show transcription as assistant response
-            const assistantDiv = document.createElement('div');
-            assistantDiv.className = 'message assistant-message';
-            // Provider/model metadata for transcription
+
+          // Clear prompt area
+          promptTextarea.value = '';
+
+          // Loading indicator
+          const loadingDiv = document.createElement('div');
+          loadingDiv.className = 'message loading';
+          loadingDiv.textContent = 'Loading...';
+          responseDiv.appendChild(loadingDiv);
+          responseDiv.scrollTop = responseDiv.scrollHeight;
+
+          try {
+            const body = {
+              model: selectedModelRaw,
+              messages: [ { role: 'user', content: userMessageParts } ],
+              modalities: ['text', 'audio'],
+              audio: { voice: 'alloy', format: 'wav' }
+            };
+            const res = await fetch('/api/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'X-Provider': provider,
+              },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+            const result = await res.json();
+
+            // Remove loading indicator
+            loadingDiv.remove();
+
+            const assistantContainer = document.createElement('div');
+            assistantContainer.className = 'message assistant-message';
+
             const metaDiv = document.createElement('div');
             metaDiv.className = 'message-meta';
-            const capProv = provider.charAt(0).toUpperCase() + provider.slice(1);
-            metaDiv.textContent = `${capProv} • ${transcriptionModel}`;
-            assistantDiv.appendChild(metaDiv);
-            assistantDiv.appendChild(document.createTextNode(transcription));
-            responseDiv.appendChild(assistantDiv);
-            // Save conversation
-            const conv = conversations.find(c => c.id === currentConversationId);
-            if (conv) {
-              conv.messages.push({ role: 'assistant', content: transcription });
-              saveConversations();
+            const capProvider = provider.charAt(0).toUpperCase() + provider.slice(1);
+            metaDiv.textContent = `${capProvider} • ${selectedModelRaw}`;
+            assistantContainer.appendChild(metaDiv);
+            responseDiv.appendChild(assistantContainer);
+
+            const content = result.choices?.[0]?.message?.content;
+
+            if (Array.isArray(content)) {
+              let combinedText = '';
+              content.forEach(part => {
+                if (part.type === 'text' || part.text) {
+                  combinedText += part.text;
+                } else if (part.type === 'audio' || part.audio || part.audio_url || part.input_audio) {
+            const rawUrl = part.audio?.url || part.audio_url?.url || part.audio_url || part.input_audio?.url || part.input_audio || part.source || '';
+                  if (!rawUrl) return;
+                  const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
+                  const audioEl = document.createElement('audio');
+                  audioEl.controls = true;
+                  audioEl.autoplay = true;
+                  audioEl.src = audioUrl;
+
+                  // Replay button
+                  const replayBtn = document.createElement('button');
+                  replayBtn.textContent = '↻';
+                  replayBtn.title = 'Replay audio';
+                  replayBtn.style.marginLeft = '6px';
+                  replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
+
+                  const audioWrapper = document.createElement('div');
+                  audioWrapper.appendChild(audioEl);
+                  audioWrapper.appendChild(replayBtn);
+                  assistantContainer.appendChild(audioWrapper);
+
+                  // Also include markdown placeholder for persistence
+                  combinedText += `\n![audio](${audioUrl})`;
+                }
+              });
+              if (combinedText.trim()) {
+                renderMessage(assistantContainer, combinedText.trim());
+              }
+              // Save conversation
+              const conv = conversations.find(c => c.id === currentConversationId);
+              if (conv) {
+                conv.messages.push({ role: 'assistant', content: combinedText.trim() });
+                saveConversations();
+              }
+            } else {
+              // Handle cases where content is null but audio provided separately
+              const standalone = result.choices?.[0]?.audio || result.choices?.[0]?.message?.audio;
+              let rendered = false;
+              if (standalone && standalone.url) {
+                const audioUrl = standalone.url.startsWith('http') ? standalone.url : (window.location.origin + standalone.url);
+                const audioEl = document.createElement('audio');
+                audioEl.controls = true;
+                audioEl.autoplay = true;
+                audioEl.src = audioUrl;
+
+                const replayBtn = document.createElement('button');
+                replayBtn.textContent = '↻';
+                replayBtn.title = 'Replay audio';
+                replayBtn.style.marginLeft = '6px';
+                replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
+
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(audioEl);
+                wrapper.appendChild(replayBtn);
+                assistantContainer.appendChild(wrapper);
+
+                renderMessage(assistantContainer, standalone.transcript || '');
+
+                // Save conv
+                const conv = conversations.find(c => c.id === currentConversationId);
+                if (conv) { conv.messages.push({ role: 'assistant', content: standalone.transcript || '' }); saveConversations(); }
+                rendered = true;
+              }
+              if (!rendered) {
+                // Fallback to JSON
+                const fallbackText = JSON.stringify(result, null, 2);
+                renderMessage(assistantContainer, fallbackText);
+              }
             }
-            responseDiv.scrollTop = responseDiv.scrollHeight;
-            // Reset UI
-            micButton.textContent = '🎤';
-            isRecording = false;
-            sendButton.disabled = false;
-          } else {
-            // Send transcription text to selected chat model
-            promptTextarea.value = transcription;
-            micButton.textContent = '🎤';
-            isRecording = false;
-            sendButton.disabled = false;
-            sendRequest();
+
+          } catch (err) {
+            console.error('Error during GPT-4o audio request:', err);
+            loadingDiv.remove();
+            const errDiv = document.createElement('div');
+            errDiv.className = 'message assistant-message';
+            errDiv.textContent = `Error: ${err.message}`;
+            responseDiv.appendChild(errDiv);
+            alert(`Error: ${err.message}`);
+          } finally {
+            resetRecordingUI();
           }
-        } catch (err) {
-          console.error('Transcription error:', err);
-          alert(`Transcription error: ${err.message}`);
+
+        } else if (selectedModel.includes('whisper')) {
+          // The existing Whisper transcription path remains unchanged
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audioDiv = document.createElement('div');
+          audioDiv.className = 'message user-message';
+          const audioEl = document.createElement('audio');
+          audioEl.controls = true;
+          audioEl.src = audioUrl;
+          audioDiv.appendChild(audioEl);
+          responseDiv.appendChild(audioDiv);
+          responseDiv.scrollTop = responseDiv.scrollHeight;
+
+          await handleWhisperTranscription(audioBlob);
+
+          resetRecordingUI();
+        } else {
+          // Fallback: transcribe with Whisper then send text prompt
+          await handleWhisperTranscription(audioBlob);
+          resetRecordingUI();
+        }
+
+        async function handleWhisperTranscription(blob) {
+          const apiKey = apiKeyInput.value.trim();
+          const provider = localStorage.getItem('provider') || 'openai';
+          const transcriptionModel = 'whisper-1';
+          try {
+            const mime = blob.type || 'audio/mp4';
+            const res = await fetch('/api/audio/transcriptions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'X-Provider': provider,
+                'X-Model': transcriptionModel,
+                'Content-Type': mime,
+              },
+              body: blob,
+            });
+            if (!res.ok) throw new Error(`Transcription error: ${res.status} ${res.statusText}`);
+            const data = await res.json();
+            const transcription = data.text || '';
+
+            const selectedModelAgain = modelSelect.value;
+            if (selectedModelAgain.toLowerCase().includes('whisper')) {
+              const assistantDiv = document.createElement('div');
+              assistantDiv.className = 'message assistant-message';
+              const metaDiv = document.createElement('div');
+              metaDiv.className = 'message-meta';
+              const capProv = provider.charAt(0).toUpperCase() + provider.slice(1);
+              metaDiv.textContent = `${capProv} • ${transcriptionModel}`;
+              assistantDiv.appendChild(metaDiv);
+              assistantDiv.appendChild(document.createTextNode(transcription));
+              responseDiv.appendChild(assistantDiv);
+
+              const conv = conversations.find(c => c.id === currentConversationId);
+              if (conv) { conv.messages.push({ role: 'assistant', content: transcription }); saveConversations(); }
+              responseDiv.scrollTop = responseDiv.scrollHeight;
+            } else {
+              promptTextarea.value = transcription;
+              sendRequest();
+            }
+          } catch (err) {
+            console.error('Transcription error:', err);
+            alert(`Transcription error: ${err.message}`);
+          }
+        }
+
+        function resetRecordingUI() {
           micButton.textContent = '🎤';
           isRecording = false;
           sendButton.disabled = false;
@@ -672,9 +977,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const url = apiType === 'chat'
       ? '/api/chat/completions'
       : '/api/completions';
-    const body = apiType === 'chat'
-      ? { model, messages: [{ role: 'user', content: prompt }] }
-      : { model, prompt };
+    let body;
+    if (apiType === 'chat') {
+      body = { model, messages: [{ role: 'user', content: prompt }] };
+      if (model.toLowerCase().startsWith('gpt-4o-audio-preview')) {
+        body.modalities = ['text', 'audio'];
+        body.audio = { voice: 'alloy', format: 'wav' };
+      }
+    } else {
+      body = { model, prompt };
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -688,16 +1000,28 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
       }
       const result = await res.json();
-      let text;
+      let assistantContent = null;
       if (apiType === 'chat') {
-        text = result.choices?.[0]?.message?.content;
+        assistantContent = result.choices?.[0]?.message?.content;
       } else {
-        text = result.choices?.[0]?.text;
+        assistantContent = result.choices?.[0]?.text;
       }
+
+      // Check for standalone audio object in choice
+      let standaloneAudio = null;
+      if (apiType === 'chat') {
+        const choiceAudio = result.choices?.[0]?.audio || result.choices?.[0]?.message?.audio;
+        if (choiceAudio && (choiceAudio.url || choiceAudio.data)) {
+          standaloneAudio = choiceAudio;
+        }
+      }
+
       // Remove loading indicator, then display assistant response
       loadingDiv.remove();
+
       const assistantContainer = document.createElement('div');
       assistantContainer.className = 'message assistant-message';
+
       // Provider/model metadata
       const providerName = localStorage.getItem('provider') || 'openai';
       const metaDiv = document.createElement('div');
@@ -706,12 +1030,90 @@ document.addEventListener('DOMContentLoaded', () => {
       metaDiv.textContent = `${capProvider} • ${model}`;
       assistantContainer.appendChild(metaDiv);
       responseDiv.appendChild(assistantContainer);
-      const fullText = text || JSON.stringify(result, null, 2);
+
+      let textForStorage = '';
+
+      let renderedSomething = false;
+
+      if (Array.isArray(assistantContent) && assistantContent.length) {
+        // Iterate parts
+        assistantContent.forEach(part => {
+          if (part.type === 'text' || part.text) {
+            renderedSomething = true;
+            textForStorage += part.text;
+            renderMessage(assistantContainer, part.text);
+          } else if (part.type === 'audio' || part.audio || part.audio_url || part.input_audio) {
+            const rawUrl = part.audio?.url || part.audio_url?.url || part.audio_url || part.input_audio?.url || part.input_audio || part.source || '';
+            if (!rawUrl) return;
+            const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
+            const audioEl = document.createElement('audio');
+            audioEl.controls = true;
+            audioEl.autoplay = true;
+            audioEl.src = audioUrl;
+
+            const replayBtn = document.createElement('button');
+            replayBtn.textContent = '↻';
+            replayBtn.title = 'Replay audio';
+            replayBtn.style.marginLeft = '6px';
+            replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
+
+            const wrapper = document.createElement('div');
+            wrapper.appendChild(audioEl);
+            wrapper.appendChild(replayBtn);
+            assistantContainer.appendChild(wrapper);
+
+            textForStorage += `\n![audio](${audioUrl})`;
+            renderedSomething = true;
+          }
+        });
+      } else {
+        const fullText = typeof assistantContent === 'string' && assistantContent
+                         ? assistantContent
+                         : (typeof assistantContent === 'object' ? '' : null);
+
+        if (fullText) {
+          textForStorage += fullText;
+          renderMessage(assistantContainer, fullText);
+          renderedSomething = true;
+        }
+
+        // Handle standalone audio
+        if (standaloneAudio) {
+          const rawUrl = standaloneAudio.url || '';
+          if (rawUrl) {
+            const audioUrl = rawUrl.startsWith('http') ? rawUrl : (window.location.origin + rawUrl);
+            const audioEl = document.createElement('audio');
+            audioEl.controls = true;
+            audioEl.autoplay = true;
+            audioEl.src = audioUrl;
+
+            const replayBtn = document.createElement('button');
+            replayBtn.textContent = '↻';
+            replayBtn.title = 'Replay audio';
+            replayBtn.style.marginLeft = '6px';
+            replayBtn.addEventListener('click', () => { audioEl.currentTime = 0; audioEl.play(); });
+
+            const wrapper = document.createElement('div');
+            wrapper.appendChild(audioEl);
+            wrapper.appendChild(replayBtn);
+            assistantContainer.appendChild(wrapper);
+
+            textForStorage += `\n![audio](${audioUrl})`;
+            renderedSomething = true;
+          }
+        }
+      }
+
+      // Fallback: if nothing was rendered, show minimal notice instead of raw JSON
+      if (!renderedSomething) {
+        const notice = '[assistant sent unsupported content]';
+        renderMessage(assistantContainer, notice);
+        textForStorage += notice;
+      }
+
       // Save assistant message to current conversation
       const conv = conversations.find(c => c.id === currentConversationId);
-      if (conv) { conv.messages.push({ role: 'assistant', content: fullText }); saveConversations(); }
-      // Render all content with markdown, code fences, and links
-      renderMessage(assistantContainer, fullText);
+      if (conv) { conv.messages.push({ role: 'assistant', content: textForStorage }); saveConversations(); }
     } catch (err) {
       console.error('Error during API request:', err);
       // Remove loading indicator if present

@@ -31,8 +31,8 @@ if (!fs.existsSync(responsesDir)) {
   fs.mkdirSync(responsesDir, { recursive: true });
 }
 
-// Parse JSON bodies
-app.use(express.json());
+// Parse JSON bodies (increase limit to allow for base64 audio)
+app.use(express.json({ limit: '50mb' }));
 
 // Proxy to list models
 app.get("/api/models", async (req, res) => {
@@ -138,7 +138,15 @@ app.post("/api/completions", async (req, res) => {
       headers: compHeaders,
       body: JSON.stringify(req.body),
     });
-    const data = await openaiRes.json();
+    const rawText = await openaiRes.text();
+    let data;
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (e) {
+      console.error('[OpenAI] Failed to parse JSON:', e);
+      data = { raw: rawText };
+    }
+    console.log(`[OpenAI] chat/completions response (${openaiRes.status}):`, JSON.stringify(data).slice(0, 2000));
     if (!openaiRes.ok) {
       return res.status(openaiRes.status).json(data);
     }
@@ -234,6 +242,118 @@ app.post("/api/chat/completions", async (req, res) => {
       }
     );
     const data = await openaiRes.json();
+    // If the response contains audio parts, decode and persist to /uploads
+    try {
+      if (Array.isArray(data.choices)) {
+        data.choices.forEach(choice => {
+          const content = choice?.message?.content;
+          if (Array.isArray(content)) {
+            content.forEach(part => {
+              let dataUri = null;
+              let base64Data = null;
+              let inferredFormat = null;
+              if (part && part.type === 'audio') {
+                if (typeof part.audio?.url === 'string' && part.audio.url.startsWith('data:audio')) {
+                  dataUri = part.audio.url;
+                } else if (typeof part.audio_url?.url === 'string' && part.audio_url.url.startsWith('data:audio')) {
+                  dataUri = part.audio_url.url;
+                } else if (typeof part.audio_url === 'string' && part.audio_url.startsWith('data:audio')) {
+                  dataUri = part.audio_url;
+                } else if (typeof part.input_audio?.url === 'string' && part.input_audio.url.startsWith('data:audio')) {
+                  dataUri = part.input_audio.url;
+                } else if (typeof part.input_audio === 'string' && part.input_audio.startsWith('data:audio')) {
+                  dataUri = part.input_audio;
+                } else if (typeof part.source === 'string' && part.source.startsWith('data:audio')) {
+                  dataUri = part.source;
+                } else if (typeof part.audio?.data === 'string' && part.audio.data.length) {
+                  base64Data = part.audio.data;
+                  inferredFormat = part.audio.format || 'wav';
+                }
+              }
+              if (dataUri) {
+                // Extract mime and base64 payload
+                const match = dataUri.match(/^data:(audio\/[^;]+);base64,(.*)$/);
+                if (match) {
+                  const mimeType = match[1];
+                  const b64 = match[2];
+                  // Determine extension from mime
+                  let ext = mimeType.split('/')[1] || 'bin';
+                  if (ext === 'mpeg') ext = 'mp3';
+                  if (ext === 'x-wav') ext = 'wav';
+                  const filename = `assistant-audio-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+                  const filePath = path.join(uploadsDir, filename);
+                  try {
+                    fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+                    // Replace the appropriate field with served URL for client
+                    const url = `/uploads/${filename}`;
+                    console.log('[OpenAI] Saved assistant audio file:', filePath);
+                    if (part.audio && part.audio.url) {
+                      part.audio.url = url;
+                    } else if (part.audio_url && typeof part.audio_url === 'object' && part.audio_url.url) {
+                      part.audio_url.url = url;
+                    } else if (typeof part.audio_url === 'string') {
+                      part.audio_url = url;
+                    } else if (part.input_audio && typeof part.input_audio === 'object' && part.input_audio.url) {
+                      part.input_audio.url = url;
+                    } else if (typeof part.input_audio === 'string') {
+                      part.input_audio = url;
+                    } else {
+                      part.source = url;
+                    }
+                  } catch (writeErr) {
+                    console.error('Error saving assistant audio:', writeErr);
+                  }
+                }
+              }
+              else if (base64Data) {
+                try {
+                  let ext = inferredFormat.toLowerCase();
+                  if (ext === 'mpeg') ext = 'mp3';
+                  if (ext === 'x-wav') ext = 'wav';
+                  if (ext !== 'wav' && ext !== 'mp3') ext = 'wav';
+                  const filename = `assistant-audio-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+                  const filePath = path.join(uploadsDir, filename);
+                  fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+                  const url = `/uploads/${filename}`;
+                  console.log('[OpenAI] Saved assistant audio (data field):', filePath);
+                  // Replace / augment
+                  if (part.audio) {
+                    part.audio.url = url;
+                    delete part.audio.data;
+                  }
+                } catch (e) {
+                  console.error('Error saving assistant audio (from data field):', e);
+                }
+              }
+            });
+          }
+        });
+
+        // Also check for top-level audio in each choice (new gpt-4o preview schema)
+        data.choices.forEach(choice => {
+          const audioObj = choice.audio || choice.message?.audio;
+          if (audioObj && typeof audioObj.data === 'string' && audioObj.data.length) {
+            try {
+              let ext = (audioObj.format || 'wav').toLowerCase();
+              if (ext === 'mpeg') ext = 'mp3';
+              if (!['wav','mp3'].includes(ext)) ext = 'wav';
+              const filename = `assistant-audio-${Date.now()}-${Math.random().toString(36).substr(2,6)}.${ext}`;
+              const filePath = path.join(uploadsDir, filename);
+              fs.writeFileSync(filePath, Buffer.from(audioObj.data, 'base64'));
+              const url = `/uploads/${filename}`;
+              console.log('[OpenAI] Saved assistant audio (top level):', filePath);
+              // Replace data with url to keep payload small
+              delete audioObj.data;
+              audioObj.url = url;
+            } catch (e) {
+              console.error('Error saving top-level assistant audio:', e);
+            }
+          }
+        });
+      }
+    } catch (audioErr) {
+      console.error('Error processing assistant audio content:', audioErr);
+    }
     if (!openaiRes.ok) {
       return res.status(openaiRes.status).json(data);
     }
