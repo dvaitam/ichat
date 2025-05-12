@@ -358,7 +358,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const div = document.createElement('div');
         div.className = `message ${msg.role}-message`;
         responseDiv.appendChild(div);
-        // Render both user and assistant messages with markdown support
+        // Render metadata for assistant messages if available
+        if (msg.role === 'assistant' && msg.provider && msg.model) {
+          const metaDiv = document.createElement('div');
+          metaDiv.className = 'message-meta';
+          const capProvider = msg.provider.charAt(0).toUpperCase() + msg.provider.slice(1);
+          metaDiv.textContent = `${capProvider} • ${msg.model}`;
+          div.appendChild(metaDiv);
+        }
+        // Render message content with markdown support
         renderMessage(div, msg.content);
       });
       responseDiv.scrollTop = responseDiv.scrollHeight;
@@ -755,7 +763,12 @@ document.addEventListener('DOMContentLoaded', () => {
               // Save conversation
               const conv = conversations.find(c => c.id === currentConversationId);
               if (conv) {
-                conv.messages.push({ role: 'assistant', content: combinedText.trim() });
+                conv.messages.push({
+                  role: 'assistant',
+                  content: combinedText.trim(),
+                  provider,
+                  model: selectedModelRaw,
+                });
                 saveConversations();
               }
             } else {
@@ -784,7 +797,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Save conv
                 const conv = conversations.find(c => c.id === currentConversationId);
-                if (conv) { conv.messages.push({ role: 'assistant', content: standalone.transcript || '' }); saveConversations(); }
+                if (conv) {
+                  conv.messages.push({
+                    role: 'assistant',
+                    content: standalone.transcript || '',
+                    provider,
+                    model: selectedModelRaw,
+                  });
+                  saveConversations();
+                }
                 rendered = true;
               }
               if (!rendered) {
@@ -860,7 +881,15 @@ document.addEventListener('DOMContentLoaded', () => {
               responseDiv.appendChild(assistantDiv);
 
               const conv = conversations.find(c => c.id === currentConversationId);
-              if (conv) { conv.messages.push({ role: 'assistant', content: transcription }); saveConversations(); }
+              if (conv) {
+                conv.messages.push({
+                  role: 'assistant',
+                  content: transcription,
+                  provider,
+                  model: transcriptionModel,
+                });
+                saveConversations();
+              }
               responseDiv.scrollTop = responseDiv.scrollHeight;
             } else {
               promptTextarea.value = transcription;
@@ -974,7 +1003,15 @@ document.addEventListener('DOMContentLoaded', () => {
         renderMessage(assistantContainerImg, markdownImgs);
         // Save to conversation
         const convImg = conversations.find(c => c.id === currentConversationId);
-        if (convImg) { convImg.messages.push({ role: 'assistant', content: markdownImgs }); saveConversations(); }
+        if (convImg) {
+          convImg.messages.push({
+            role: 'assistant',
+            content: markdownImgs,
+            provider: providerName,
+            model: model,
+          });
+          saveConversations();
+        }
       } catch (err) {
         console.error('Error during image generation:', err);
         if (loadingDivImg) loadingDivImg.remove();
@@ -1136,7 +1173,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Save assistant message to current conversation
       const conv = conversations.find(c => c.id === currentConversationId);
-      if (conv) { conv.messages.push({ role: 'assistant', content: textForStorage }); saveConversations(); }
+      if (conv) {
+        conv.messages.push({
+          role: 'assistant',
+          content: textForStorage,
+          provider: providerName,
+          model: model,
+        });
+        saveConversations();
+      }
     } catch (err) {
       console.error('Error during API request:', err);
       // Remove loading indicator if present
