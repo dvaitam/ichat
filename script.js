@@ -986,15 +986,30 @@ document.addEventListener('DOMContentLoaded', () => {
           },
           body: JSON.stringify(genBody),
         });
-        const imgResult = await resImg.json();
+        // Read raw response and attempt to parse JSON (handle unexpected HTML errors)
+        const raw = await resImg.text();
+        let imgResult;
+        try {
+          imgResult = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          console.error('Non-JSON response from image generation endpoint:', raw);
+          throw new Error(`Invalid JSON from image generation endpoint (HTTP ${resImg.status})`);
+        }
         if (!resImg.ok) {
           const errMsg = (imgResult.error && imgResult.error.message) || imgResult.error || `${resImg.status} ${resImg.statusText}`;
           throw new Error(`Image API error: ${errMsg}`);
         }
         loadingDivImg.remove();
-        const urls = Array.isArray(imgResult.data)
-          ? imgResult.data.map(d => d.url)
-          : [];
+        const urls = [];
+        if (Array.isArray(imgResult.data)) {
+          imgResult.data.forEach(d => {
+            if (typeof d.url === 'string') {
+              urls.push(d.url);
+            } else if (typeof d.b64_json === 'string') {
+              urls.push(`data:image/png;base64,${d.b64_json}`);
+            }
+          });
+        }
         const assistantContainerImg = document.createElement('div');
         assistantContainerImg.className = 'message assistant-message';
         // Provider/model metadata
