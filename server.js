@@ -52,7 +52,8 @@ app.get("/api/models", async (req, res) => {
           { id: 'claude-3-opus-20240229' },
           { id: 'claude-3-sonnet-20240229' },
           { id: 'claude-3-haiku-20240307' },
-          { id: 'claude-4' }
+          { id: 'claude-4-opus' },
+          { id: 'claude-4-sonnet' }
         ]
       };
       return res.json(claudeModels);
