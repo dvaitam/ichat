@@ -44,19 +44,22 @@ app.get("/api/models", async (req, res) => {
   try {
     // List models for each provider
     if (provider === 'claude') {
-      // Claude API doesn't have a models endpoint, return static list
-      const claudeModels = {
-        data: [
-          { id: 'claude-3-5-sonnet-20241022' },
-          { id: 'claude-3-5-haiku-20241022' },
-          { id: 'claude-3-opus-20240229' },
-          { id: 'claude-3-sonnet-20240229' },
-          { id: 'claude-3-haiku-20240307' },
-          { id: 'claude-4-opus' },
-          { id: 'claude-4-sonnet' }
-        ]
-      };
-      return res.json(claudeModels);
+      // Fetch list of Claude models from Anthropic API
+      const url = 'https://api.anthropic.com/v1/models';
+      console.log(`[Claude] Fetch models URL: ${url}`);
+      const clRes = await fetch(url, {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        }
+      });
+      const clData = await clRes.json();
+      console.log(`[Claude] Response status: ${clRes.status}`, clData);
+      if (!clRes.ok) {
+        return res.status(clRes.status).json(clData);
+      }
+      const models = Array.isArray(clData.models) ? clData.models : [];
+      return res.json({ data: models.map(m => ({ id: m.id })) });
     }
     if (provider === 'gemini') {
       // Google Generative Language API: use API key as query param (stable v1 endpoint)
