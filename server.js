@@ -83,14 +83,24 @@ app.get("/api/models", async (req, res) => {
       };
       return res.json(transformed);
     } else if (provider === 'grok') {
-      // Static list of Grok models
-      const grokModels = {
-        data: [
-          { id: 'grok-1-placeholder' }
-          // Add more models here if known, e.g. { id: 'grok-large-placeholder' }
-        ]
-      };
-      return res.json(grokModels);
+      // Fetch list of Grok models from xAI API
+      const url = 'https://api.x.ai/v1/models';
+      console.log(`[Grok] Fetch models URL: ${url}`);
+      const grokRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` }
+      });
+      const grokData = await grokRes.json();
+      console.log(`[Grok] Response status: ${grokRes.status}`, grokData);
+      if (!grokRes.ok) {
+        return res.status(grokRes.status).json(grokData);
+      }
+      // Normalize to OpenAI-like format { data: [{ id }] }
+      const models = Array.isArray(grokData.data)
+        ? grokData.data
+        : Array.isArray(grokData.models)
+        ? grokData.models
+        : [];
+      return res.json({ data: models.map(m => ({ id: m.id || m.name })) });
     }
     // OpenAI API
     const oaHeaders = { Authorization: `Bearer ${apiKey}` };
