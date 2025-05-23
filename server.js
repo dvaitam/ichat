@@ -58,7 +58,11 @@ app.get("/api/models", async (req, res) => {
       if (!clRes.ok) {
         return res.status(clRes.status).json(clData);
       }
-      const models = Array.isArray(clData.models) ? clData.models : [];
+      const models = Array.isArray(clData.models)
+        ? clData.models
+        : Array.isArray(clData.data)
+        ? clData.data
+        : [];
       return res.json({ data: models.map(m => ({ id: m.id })) });
     }
     if (provider === 'gemini') {
