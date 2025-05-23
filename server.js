@@ -75,6 +75,15 @@ app.get("/api/models", async (req, res) => {
         data: models.map(m => ({ id: m.name }))
       };
       return res.json(transformed);
+    } else if (provider === 'grok') {
+      // Static list of Grok models
+      const grokModels = {
+        data: [
+          { id: 'grok-1-placeholder' }
+          // Add more models here if known, e.g. { id: 'grok-large-placeholder' }
+        ]
+      };
+      return res.json(grokModels);
     }
     // OpenAI API
     const oaHeaders = { Authorization: `Bearer ${apiKey}` };
@@ -180,6 +189,60 @@ app.post("/api/completions", async (req, res) => {
         console.error('Error writing Gemini response to file:', writeErr);
       }
       return res.json(responseObj);
+    } else if (provider === 'grok') {
+      try {
+        const { model, prompt, max_tokens, temperature } = req.body;
+
+        const grokBody = {
+          model: model || 'grok-1-placeholder',
+          prompt: prompt || '',
+          max_tokens: max_tokens || 2048,
+          temperature: temperature || 0.9
+        };
+
+        const grokRes = await fetch('https://api.x.ai/v1/completions', { // Assumed endpoint
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(grokBody)
+        });
+
+        const grokData = await grokRes.json();
+        console.log(`[Grok] completions response (${grokRes.status}):`, JSON.stringify(grokData).slice(0, 500));
+
+        if (!grokRes.ok) {
+          return res.status(grokRes.status).json(grokData);
+        }
+
+        const text = grokData.choices?.[0]?.text || ''; // Major assumption
+        const responseObj = {
+          choices: [{ text }],
+          id: grokData.id, // Optional, if Grok provides it
+          usage: grokData.usage // Optional, if Grok provides it
+        };
+
+        // Save Grok completion response
+        try {
+          const id = `grok-completion-${model || 'unknown_model'}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`);
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => {
+            if (err) console.error('Error saving Grok completion response:', err);
+          });
+        } catch (writeErr) {
+          console.error('Error writing Grok completion response to file:', writeErr);
+        }
+
+        return res.json(responseObj);
+
+      } catch (err) {
+        console.error('[Grok] Error in /api/completions:', err);
+        res.status(500).json({ error: 'Internal server error with Grok provider for completions' });
+      }
+    } else if (provider === 'grok') {
+      // Placeholder for Grok chat completions
+      return res.status(501).json({ error: "Grok chat completions not yet implemented" });
     }
     // OpenAI API
     const baseUrl = 'https://api.openai.com/v1';
@@ -320,6 +383,58 @@ app.post("/api/chat/completions", async (req, res) => {
         console.error('Error writing Gemini chat response to file:', writeErr);
       }
       return res.json(responseObj);
+    } else if (provider === 'grok') {
+      try {
+        const { model, messages, max_tokens, temperature } = req.body;
+
+        const grokBody = {
+          model: model || 'grok-1-placeholder', // Use the placeholder from /api/models
+          messages: messages || [],
+          max_tokens: max_tokens || 2048,
+          temperature: temperature || 0.9
+          // Add other parameters if Grok supports them (e.g., top_p, stop)
+        };
+
+        const grokRes = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(grokBody)
+        });
+
+        const grokData = await grokRes.json();
+        console.log(`[Grok] chat/completions response (${grokRes.status}):`, JSON.stringify(grokData).slice(0, 500));
+
+        if (!grokRes.ok) {
+          return res.status(grokRes.status).json(grokData);
+        }
+
+        const content = grokData.choices?.[0]?.message?.content || ''; // Major assumption
+        const responseObj = {
+          choices: [{ message: { content } }],
+          id: grokData.id || `grok-${model}-${Date.now()}`,
+          usage: grokData.usage // Assuming Grok provides usage data in this format
+        };
+
+        // Save Grok chat response (similar to Claude/Gemini)
+        try {
+          const id = `grok-chat-${model || 'unknown_model'}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`); // .bin to match others
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => {
+            if (err) console.error('Error saving Grok chat response:', err);
+          });
+        } catch (writeErr) {
+          console.error('Error writing Grok chat response to file:', writeErr);
+        }
+
+        return res.json(responseObj);
+
+      } catch (err) {
+        console.error('[Grok] Error in /api/chat/completions:', err);
+        res.status(500).json({ error: 'Internal server error with Grok provider' });
+      }
     }
     // OpenAI API
     const baseUrl = 'https://api.openai.com/v1';
