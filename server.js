@@ -43,6 +43,19 @@ app.get("/api/models", async (req, res) => {
   }
   try {
     // List models for each provider
+    if (provider === 'claude') {
+      // Claude API doesn't have a models endpoint, return static list
+      const claudeModels = {
+        data: [
+          { id: 'claude-3-5-sonnet-20241022' },
+          { id: 'claude-3-5-haiku-20241022' },
+          { id: 'claude-3-opus-20240229' },
+          { id: 'claude-3-sonnet-20240229' },
+          { id: 'claude-3-haiku-20240307' }
+        ]
+      };
+      return res.json(claudeModels);
+    }
     if (provider === 'gemini') {
       // Google Generative Language API: use API key as query param (stable v1 endpoint)
       const url = `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`;
@@ -83,6 +96,42 @@ app.post("/api/completions", async (req, res) => {
     return res.status(400).json({ error: "Missing Authorization header" });
   }
   try {
+    if (provider === 'claude') {
+      // Claude completions using Messages API
+      const { model, prompt, max_tokens, temperature } = req.body;
+      const claudeBody = {
+        model: model || 'claude-3-5-sonnet-20241022',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: max_tokens || 2048,
+        temperature: temperature || 0.9
+      };
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(claudeBody)
+      });
+      const claudeData = await claudeRes.json();
+      console.log(`[Claude] completions response (${claudeRes.status}):`, JSON.stringify(claudeData).slice(0, 2000));
+      if (!claudeRes.ok) {
+        return res.status(claudeRes.status).json(claudeData);
+      }
+      // Transform to OpenAI format
+      const text = claudeData.content?.[0]?.text || '';
+      const responseObj = { choices: [{ text }] };
+      // Save Claude completion response
+      try {
+        const id = `claude-${model}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        const filePath = path.join(responsesDir, `${id}.bin`);
+        fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => err && console.error('Error saving Claude response:', err));
+      } catch (writeErr) {
+        console.error('Error writing Claude response to file:', writeErr);
+      }
+      return res.json(responseObj);
+    }
     if (provider === 'gemini') {
       // Use Gemini v1beta generateContent for text completions
       const { model, prompt } = req.body;
@@ -169,6 +218,46 @@ app.post("/api/chat/completions", async (req, res) => {
     return res.status(400).json({ error: "Missing Authorization header" });
   }
   try {
+    if (provider === 'claude') {
+      // Claude chat completions using Messages API
+      const { model, messages, max_tokens, temperature } = req.body;
+      const claudeBody = {
+        model: model || 'claude-3-5-sonnet-20241022',
+        messages: messages || [],
+        max_tokens: max_tokens || 2048,
+        temperature: temperature || 0.9
+      };
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(claudeBody)
+      });
+      const claudeData = await claudeRes.json();
+      console.log(`[Claude] chat/completions response (${claudeRes.status}):`, JSON.stringify(claudeData).slice(0, 2000));
+      if (!claudeRes.ok) {
+        return res.status(claudeRes.status).json(claudeData);
+      }
+      // Transform to OpenAI format
+      const content = claudeData.content?.[0]?.text || '';
+      const responseObj = { 
+        choices: [{ message: { content } }],
+        id: claudeData.id,
+        usage: claudeData.usage
+      };
+      // Save Claude chat response
+      try {
+        const id = `claude-chat-${model}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        const filePath = path.join(responsesDir, `${id}.bin`);
+        fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => err && console.error('Error saving Claude chat response:', err));
+      } catch (writeErr) {
+        console.error('Error writing Claude chat response to file:', writeErr);
+      }
+      return res.json(responseObj);
+    }
     if (provider === 'gemini') {
       // Google Generative Language API: chat via generateMessage (beta endpoint)
       const { model, messages } = req.body;
