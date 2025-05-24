@@ -44,26 +44,19 @@ app.get("/api/models", async (req, res) => {
   try {
     // List models for each provider
     if (provider === 'claude') {
-      // Fetch list of Claude models from Anthropic API
-      const url = 'https://api.anthropic.com/v1/models';
-      console.log(`[Claude] Fetch models URL: ${url}`);
-      const clRes = await fetch(url, {
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        }
-      });
-      const clData = await clRes.json();
-      console.log(`[Claude] Response status: ${clRes.status}`, clData);
-      if (!clRes.ok) {
-        return res.status(clRes.status).json(clData);
-      }
-      const models = Array.isArray(clData.models)
-        ? clData.models
-        : Array.isArray(clData.data)
-        ? clData.data
-        : [];
-      return res.json({ data: models.map(m => ({ id: m.id })) });
+      // Claude API doesn't have a models endpoint, return static list
+      const claudeModels = {
+        data: [
+          { id: 'claude-3-5-sonnet-20241022' },
+          { id: 'claude-3-5-haiku-20241022' },
+          { id: 'claude-3-opus-20240229' },
+          { id: 'claude-3-sonnet-20240229' },
+          { id: 'claude-3-haiku-20240307' },
+          { id: 'claude-4-opus' },
+          { id: 'claude-4-sonnet' }
+        ]
+      };
+      return res.json(claudeModels);
     }
     if (provider === 'gemini') {
       // Google Generative Language API: use API key as query param (stable v1 endpoint)
@@ -83,24 +76,46 @@ app.get("/api/models", async (req, res) => {
       };
       return res.json(transformed);
     } else if (provider === 'grok') {
-      // Fetch list of Grok models from xAI API
-      const url = 'https://api.x.ai/v1/models';
-      console.log(`[Grok] Fetch models URL: ${url}`);
-      const grokRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${apiKey}` }
-      });
-      const grokData = await grokRes.json();
-      console.log(`[Grok] Response status: ${grokRes.status}`, grokData);
-      if (!grokRes.ok) {
-        return res.status(grokRes.status).json(grokData);
+      // Static list of Grok models
+      const grokModels = {
+        data: [
+          { id: 'grok-1-placeholder' }
+          // Add more models here if known, e.g. { id: 'grok-large-placeholder' }
+        ]
+      };
+      };
+      return res.json(grokModels);
+    } else if (provider === 'deepseek') {
+      try {
+        const apiKey = getRawAPIKey(req);
+        // The main handler already checks for apiKey, but good to be defensive
+        if (!apiKey) { 
+          return res.status(400).json({ error: "Missing Authorization header for DeepSeek" });
+        }
+
+        const deepseekModelsUrl = 'https://api.deepseek.com/v1/models';
+        const deepseekRes = await fetch(deepseekModelsUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`
+          }
+        });
+
+        if (!deepseekRes.ok) {
+          const errorText = await deepseekRes.text();
+          console.error(`[DeepSeek] Models API error (${deepseekRes.status}):`, errorText);
+          return res.status(deepseekRes.status).json({ error: 'Failed to fetch models from DeepSeek provider.', details: errorText });
+        }
+
+        const deepseekData = await deepseekRes.json();
+        // Assuming DeepSeek's /v1/models endpoint returns data in an OpenAI-compatible format,
+        // specifically { data: [{ id: 'model-name', ...}, ...] }
+        return res.json(deepseekData);
+
+      } catch (err) {
+        console.error('[DeepSeek] Error in /api/models for deepseek:', err);
+        res.status(500).json({ error: 'Internal server error while fetching DeepSeek models' });
       }
-      // Normalize to OpenAI-like format { data: [{ id }] }
-      const models = Array.isArray(grokData.data)
-        ? grokData.data
-        : Array.isArray(grokData.models)
-        ? grokData.models
-        : [];
-      return res.json({ data: models.map(m => ({ id: m.id || m.name })) });
     }
     // OpenAI API
     const oaHeaders = { Authorization: `Bearer ${apiKey}` };
@@ -260,6 +275,57 @@ app.post("/api/completions", async (req, res) => {
     } else if (provider === 'grok') {
       // Placeholder for Grok chat completions
       return res.status(501).json({ error: "Grok chat completions not yet implemented" });
+    } else if (provider === 'deepseek') {
+      try {
+        const apiKey = getRawAPIKey(req);
+        // const requestBody = req.body;
+
+        const deepseekComplUrl = 'https://api.deepseek.com/v1/completions';
+        
+        console.log(`[DeepSeek] /api/completions request to ${deepseekComplUrl} with model ${req.body.model}`);
+
+        const deepseekRes = await fetch(deepseekComplUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(req.body) // Forwarding original request body
+        });
+
+        const responseText = await deepseekRes.text();
+        let deepseekData;
+        try {
+          deepseekData = JSON.parse(responseText);
+        } catch (e) {
+          console.error(`[DeepSeek] completions response is not valid JSON (${deepseekRes.status}):`, responseText);
+          return res.status(502).json({ error: 'Invalid JSON response from DeepSeek completions', details: responseText });
+        }
+
+        console.log(`[DeepSeek] completions response (${deepseekRes.status}):`, JSON.stringify(deepseekData).slice(0, 2000));
+
+        if (!deepseekRes.ok) {
+          return res.status(deepseekRes.status).json(deepseekData); // Forward error
+        }
+
+        // Save DeepSeek completion response
+        try {
+          const modelName = deepseekData.model || req.body.model || 'unknown_model';
+          const id = `deepseek-completion-${modelName.replace(/[^a-zA-Z0-9_-]/g, '_')}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`);
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(deepseekData)), err => {
+            if (err) console.error('[DeepSeek] Error saving completion response:', err);
+          });
+        } catch (writeErr) {
+          console.error('[DeepSeek] Error writing completion response to file:', writeErr);
+        }
+
+        return res.json(deepseekData); // Forward DeepSeek's response
+
+      } catch (err) {
+        console.error('[DeepSeek] Error in /api/completions for deepseek:', err);
+        res.status(500).json({ error: 'Internal server error with DeepSeek completions provider' });
+      }
     }
     // OpenAI API
     const baseUrl = 'https://api.openai.com/v1';
@@ -451,6 +517,59 @@ app.post("/api/chat/completions", async (req, res) => {
       } catch (err) {
         console.error('[Grok] Error in /api/chat/completions:', err);
         res.status(500).json({ error: 'Internal server error with Grok provider' });
+      }
+    } else if (provider === 'deepseek') {
+      try {
+        const apiKey = getRawAPIKey(req);
+        // const requestBody = req.body; // Already available
+
+        const deepseekChatUrl = 'https://api.deepseek.com/v1/chat/completions';
+
+        console.log(`[DeepSeek] /api/chat/completions request to ${deepseekChatUrl} with model ${req.body.model}`);
+        // To log the full body, you might do: console.log('[DeepSeek] Request body:', JSON.stringify(req.body, null, 2));
+
+
+        const deepseekRes = await fetch(deepseekChatUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(req.body) // Forwarding the original request body
+        });
+
+        const responseText = await deepseekRes.text(); // Read as text first for robust error handling
+        let deepseekData;
+        try {
+          deepseekData = JSON.parse(responseText);
+        } catch (e) {
+          console.error(`[DeepSeek] chat/completions response is not valid JSON (${deepseekRes.status}):`, responseText);
+          return res.status(502).json({ error: 'Invalid JSON response from DeepSeek', details: responseText });
+        }
+        
+        console.log(`[DeepSeek] chat/completions response (${deepseekRes.status}):`, JSON.stringify(deepseekData).slice(0, 2000));
+
+        if (!deepseekRes.ok) {
+          return res.status(deepseekRes.status).json(deepseekData); // Forward error from DeepSeek
+        }
+
+        // Save DeepSeek chat response
+        try {
+          const modelName = deepseekData.model || req.body.model || 'unknown_model';
+          const id = `deepseek-chat-${modelName.replace(/[^a-zA-Z0-9_-]/g, '_')}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`);
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(deepseekData)), err => {
+            if (err) console.error('[DeepSeek] Error saving chat response:', err);
+          });
+        } catch (writeErr) {
+          console.error('[DeepSeek] Error writing chat response to file:', writeErr);
+        }
+
+        return res.json(deepseekData); // Forward DeepSeek's response (already OpenAI-compatible)
+
+      } catch (err) {
+        console.error('[DeepSeek] Error in /api/chat/completions for deepseek:', err);
+        res.status(500).json({ error: 'Internal server error with DeepSeek chat provider' });
       }
     }
     // OpenAI API
