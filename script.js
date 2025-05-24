@@ -97,6 +97,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutButton = document.getElementById('logout-button');
   const modelSelect = document.getElementById('model');
   const responseDiv = document.getElementById('response');
+
+  // Add DeepSeek option to provider select elements
+  const deepSeekOptionLogin = document.createElement('option');
+  deepSeekOptionLogin.value = 'deepseek';
+  deepSeekOptionLogin.textContent = 'DeepSeek';
+  loginProviderSelect.appendChild(deepSeekOptionLogin);
+
+  const deepSeekOptionHeader = document.createElement('option');
+  deepSeekOptionHeader.value = 'deepseek';
+  deepSeekOptionHeader.textContent = 'DeepSeek';
+  headerProviderSelect.appendChild(deepSeekOptionHeader);
+
   // Initialize UI based on stored provider and its API key
   const savedProvider = localStorage.getItem('provider') || 'openai';
   loginProviderSelect.value = savedProvider;

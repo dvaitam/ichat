@@ -102,6 +102,24 @@ app.get("/api/models", async (req, res) => {
         : [];
       return res.json({ data: models.map(m => ({ id: m.id || m.name })) });
     }
+    if (provider === 'deepseek') {
+      const url = 'https://api.deepseek.com/v1/models';
+      console.log(`[DeepSeek] Fetch models URL: ${url}`);
+      const dsRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` }
+      });
+      const dsData = await dsRes.json();
+      console.log(`[DeepSeek] Response status: ${dsRes.status}`, dsData);
+      if (!dsRes.ok) {
+        return res.status(dsRes.status).json(dsData);
+      }
+      const models = Array.isArray(dsData.data)
+        ? dsData.data
+        : Array.isArray(dsData.models)
+        ? dsData.models
+        : [];
+      return res.json({ data: models.map(m => ({ id: m.id })) });
+    }
     // OpenAI API
     const oaHeaders = { Authorization: `Bearer ${apiKey}` };
     const oaRes = await fetch('https://api.openai.com/v1/models', { headers: oaHeaders });
@@ -256,6 +274,50 @@ app.post("/api/completions", async (req, res) => {
       } catch (err) {
         console.error('[Grok] Error in /api/completions:', err);
         res.status(500).json({ error: 'Internal server error with Grok provider for completions' });
+      }
+    } else if (provider === 'deepseek') {
+      try {
+        const { model, prompt, max_tokens, temperature } = req.body;
+        const deepSeekBody = {
+          model: model || "deepseek-coder",
+          prompt: prompt || "",
+          max_tokens: max_tokens || 2048,
+          temperature: temperature || 0.7
+        };
+        const url = 'https://api.deepseek.com/v1/completions';
+        console.log(`[DeepSeek] completions request:`, JSON.stringify(deepSeekBody).slice(0, 500));
+        const deepSeekRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(deepSeekBody)
+        });
+        const deepSeekData = await deepSeekRes.json();
+        console.log(`[DeepSeek] completions response (${deepSeekRes.status}):`, JSON.stringify(deepSeekData).slice(0, 2000));
+        if (!deepSeekRes.ok) {
+          return res.status(deepSeekRes.status).json(deepSeekData);
+        }
+        const text = deepSeekData.choices?.[0]?.text || '';
+        const responseObj = {
+          choices: [{ text }],
+          id: deepSeekData.id,
+          usage: deepSeekData.usage
+        };
+        try {
+          const id = `deepseek-completion-${model || 'unknown_model'}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`);
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => {
+            if (err) console.error('Error saving DeepSeek completion response:', err);
+          });
+        } catch (writeErr) {
+          console.error('Error writing DeepSeek completion response to file:', writeErr);
+        }
+        return res.json(responseObj);
+      } catch (err) {
+        console.error('[DeepSeek] Error in /api/completions:', err);
+        res.status(500).json({ error: 'Internal server error with DeepSeek provider for completions' });
       }
     } else if (provider === 'grok') {
       // Placeholder for Grok chat completions
@@ -451,6 +513,50 @@ app.post("/api/chat/completions", async (req, res) => {
       } catch (err) {
         console.error('[Grok] Error in /api/chat/completions:', err);
         res.status(500).json({ error: 'Internal server error with Grok provider' });
+      }
+    } else if (provider === 'deepseek') {
+      try {
+        const { model, messages, max_tokens, temperature } = req.body;
+        const deepSeekBody = {
+          model: model || "deepseek-chat",
+          messages: messages || [],
+          max_tokens: max_tokens || 2048,
+          temperature: temperature || 0.7
+        };
+        const url = 'https://api.deepseek.com/v1/chat/completions';
+        console.log(`[DeepSeek] chat/completions request:`, JSON.stringify(deepSeekBody).slice(0, 500));
+        const deepSeekRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(deepSeekBody)
+        });
+        const deepSeekData = await deepSeekRes.json();
+        console.log(`[DeepSeek] chat/completions response (${deepSeekRes.status}):`, JSON.stringify(deepSeekData).slice(0, 2000));
+        if (!deepSeekRes.ok) {
+          return res.status(deepSeekRes.status).json(deepSeekData);
+        }
+        const content = deepSeekData.choices?.[0]?.message?.content || '';
+        const responseObj = {
+          choices: [{ message: { content } }],
+          id: deepSeekData.id,
+          usage: deepSeekData.usage
+        };
+        try {
+          const id = `deepseek-chat-${model || 'unknown_model'}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          const filePath = path.join(responsesDir, `${id}.bin`);
+          fs.writeFile(filePath, Buffer.from(JSON.stringify(responseObj)), err => {
+            if (err) console.error('Error saving DeepSeek chat response:', err);
+          });
+        } catch (writeErr) {
+          console.error('Error writing DeepSeek chat response to file:', writeErr);
+        }
+        return res.json(responseObj);
+      } catch (err) {
+        console.error('[DeepSeek] Error in /api/chat/completions:', err);
+        res.status(500).json({ error: 'Internal server error with DeepSeek provider' });
       }
     }
     // OpenAI API
