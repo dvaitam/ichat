@@ -67,7 +67,7 @@ app.get("/api/models", async (req, res) => {
     }
     if (provider === 'gemini') {
       // Google Generative Language API: use API key as query param (stable v1 endpoint)
-      const url = `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
       console.log(`[Gemini] Fetch models URL: ${url}`);
       const glRes = await fetch(url);
       const glData = await glRes.json();
@@ -83,8 +83,8 @@ app.get("/api/models", async (req, res) => {
        data: models.map(m => ({ id: m.name.startsWith('models/') ?
 	       m.name.substring('models/'.length) : m.name }))
       };
-transformed.data.push({ id: "gemini-2.5-pro-preview-05-06" });
-transformed.data.push({ id: "gemini-2.5-flash-preview-05-20" });
+//transformed.data.push({ id: "gemini-2.5-pro-preview-05-06" });
+//transformed.data.push({ id: "gemini-2.5-flash-preview-05-20" });
       return res.json(transformed);
     } else if (provider === 'grok') {
       // Fetch list of Grok models from xAI API
