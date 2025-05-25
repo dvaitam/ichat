@@ -81,8 +81,8 @@ app.get("/api/models", async (req, res) => {
       const transformed = {
         data: models.map(m => ({ id: m.name }))
       };
-      transformed.data.push({ id: "models/gemini-2.5-pro-preview-05-06" });
-transformed.data.push({ id: "models/gemini-2.5-flash-preview-05-20" });
+transformed.data.push({ id: "gemini-2.5-pro-preview-05-06" });
+transformed.data.push({ id: "gemini-2.5-flash-preview-05-20" });
       return res.json(transformed);
     } else if (provider === 'grok') {
       // Fetch list of Grok models from xAI API
