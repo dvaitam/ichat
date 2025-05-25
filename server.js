@@ -79,7 +79,7 @@ app.get("/api/models", async (req, res) => {
       // Transform to OpenAI-like { data: [{ id: name }, ...] }
       const models = Array.isArray(glData.models) ? glData.models : [];
       const transformed = {
-        data: models.map(m => ({ id: m.name }))
+        data: models.map(m => ({ id: m.name.replace(/^models//, '') }))
       };
 transformed.data.push({ id: "gemini-2.5-pro-preview-05-06" });
 transformed.data.push({ id: "gemini-2.5-flash-preview-05-20" });
