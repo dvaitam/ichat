@@ -5,7 +5,7 @@ const path = require("path");
 const multer = require("multer");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || process.argv[2] || 3000;
 // Directory to store uploaded images
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -79,8 +79,8 @@ app.get("/api/models", async (req, res) => {
       // Transform to OpenAI-like { data: [{ id: name }, ...] }
       const models = Array.isArray(glData.models) ? glData.models : [];
       const transformed = {
-        data: models.map(m => ({ id: m.name.replace(/^models//, '') })),
-      }; 
+        data: models.map(m => ({ id: m.name.replace(/^models// '') }))
+      };
 transformed.data.push({ id: "gemini-2.5-pro-preview-05-06" });
 transformed.data.push({ id: "gemini-2.5-flash-preview-05-20" });
       return res.json(transformed);
