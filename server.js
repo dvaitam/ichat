@@ -192,7 +192,7 @@ app.post("/api/completions", async (req, res) => {
         temperature: typeof req.body.temperature === 'number' ? req.body.temperature : 0.9,
         topP:       typeof req.body.top_p === 'number'       ? req.body.top_p       : 0.8,
         topK:       typeof req.body.top_k === 'number'       ? req.body.top_k       : 40,
-        maxOutputTokens: typeof req.body.max_tokens === 'number' ? req.body.max_tokens : 2048,
+        maxOutputTokens: typeof req.body.max_tokens === 'number' ? req.body.max_tokens : 8192,
         stopSequences: Array.isArray(req.body.stop) ? req.body.stop
                          : req.body.stop ? [req.body.stop]
                          : ['EOM'],
