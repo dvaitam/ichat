@@ -419,16 +419,9 @@ app.post("/api/chat/completions", async (req, res) => {
       // Generation and safety settings (allow override via request or use defaults)
       const generationConfig = {
         temperature: typeof req.body.temperature === 'number' ? req.body.temperature : 0.9,
-        topP:       typeof req.body.top_p === 'number'       ? req.body.top_p       : 0.8,
-        topK:       typeof req.body.top_k === 'number'       ? req.body.top_k       : 40,
         maxOutputTokens: typeof req.body.max_tokens === 'number' ? req.body.max_tokens : 2048,
-        stopSequences: Array.isArray(req.body.stop) ? req.body.stop
-                         : req.body.stop ? [req.body.stop]
-                         : ['EOM'],
       };
       const safetySettings = [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
       ];
       const glBody = { contents, generationConfig, safetySettings };
       // Use unified generateContent endpoint for chat
