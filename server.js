@@ -407,7 +407,7 @@ app.post("/api/chat/completions", async (req, res) => {
       return res.json(responseObj);
     }
     if (provider === 'gemini') {
-      // Google Generative Language API: chat via generateMessage (beta endpoint)
+      // Google Generative Language API: chat via generateContent (beta endpoint)
       const { model, messages } = req.body;
       // Build contents array as per Gemini spec
       const contents = Array.isArray(messages)
@@ -416,30 +416,31 @@ app.post("/api/chat/completions", async (req, res) => {
             parts: [{ text: m.content }]
           }))
         : [];
-      // Generation and safety settings (allow override via request or use defaults)
+      // Generation settings (allow override via request or use defaults)
       const generationConfig = {
         temperature: typeof req.body.temperature === 'number' ? req.body.temperature : 0.9,
-        maxOutputTokens: typeof req.body.max_tokens === 'number' ? req.body.max_tokens : 2048,
+        // bump default to full 8K window; client can still override via max_tokens
+        maxOutputTokens: typeof req.body.max_tokens === 'number' ? req.body.max_tokens : 8192,
       };
       const safetySettings = [
       ];
       const glBody = { contents, generationConfig, safetySettings };
-      // Use unified generateContent endpoint for chat
+      // Use the Gemini unified generateContent endpoint for chat
       // Normalize model name: strip leading 'models/' if present
       const modelId = model.startsWith('models/') ? model.replace(/^models\//, '') : model;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-      console.log('[Gemini] generateMessage URL:', url, 'Body:', glBody);
+      console.log('[Gemini] generateContent URL:', url, 'Body:', glBody);
       const glRes = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(glBody)
       });
       const raw = await glRes.text();
-      console.log(`[Gemini] generateMessage raw response (status ${glRes.status}):`, raw);
+      console.log(`[Gemini] generateContent raw response (status ${glRes.status}):`, raw);
       let glData;
       try { glData = raw ? JSON.parse(raw) : {}; }
       catch (e) {
-        console.error('[Gemini] generateMessage JSON parse error:', e);
+        console.error('[Gemini] generateContent JSON parse error:', e);
         return res.status(500).json({ error: 'Invalid JSON from Gemini', raw });
       }
       if (!glRes.ok) {
