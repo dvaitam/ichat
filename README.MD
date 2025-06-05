@@ -1,4 +1,4 @@
-# Guru
+# MyOwnAI
 
 A web-based chat UI and proxy server to interact with multiple large language model providers:
 OpenAI, Anthropic Claude, Google Gemini, and xAI Grok.
@@ -10,6 +10,8 @@ OpenAI, Anthropic Claude, Google Gemini, and xAI Grok.
 - Model browsing (fetched dynamically from each provider)
 - Conversation history in browser localStorage
 - File uploads (images, video) and audio recording
+- Real-time audio recording and playback
+- Jenkins CI/CD integration
 
 ## Prerequisites
 
