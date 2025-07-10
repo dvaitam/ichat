@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutButton = document.getElementById('logout-button');
   const modelSelect = document.getElementById('model');
   const responseDiv = document.getElementById('response');
+  const systemPromptTextarea = document.getElementById('system-prompt');
 
   // Add DeepSeek option to provider select elements
   const deepSeekOptionLogin = document.createElement('option');
@@ -398,6 +399,9 @@ document.addEventListener('DOMContentLoaded', () => {
     populateConversationSelect();
     responseDiv.innerHTML = '';
     const conv = conversations.find(c => c.id === id);
+    if (conv) {
+      systemPromptTextarea.value = conv.system || '';
+    }
     if (conv && conv.messages) {
       conv.messages.forEach(msg => {
         const div = document.createElement('div');
@@ -420,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function createNewConversation() {
     const id = 'conv-' + Date.now();
     const name = 'Chat ' + new Date().toLocaleString();
-    const conv = { id, name, messages: [] };
+    const conv = { id, name, messages: [], system: '' };
     conversations.push(conv);
     saveConversations();
     currentConversationId = id;
@@ -429,6 +433,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   convSelect.addEventListener('change', () => loadConversation(convSelect.value));
   newChatButton.addEventListener('click', createNewConversation);
+  systemPromptTextarea.addEventListener('blur', () => {
+    const conv = conversations.find(c => c.id === currentConversationId);
+    if (conv) {
+      conv.system = systemPromptTextarea.value;
+      saveConversations();
+    }
+  });
   // Initialize first conversation
   if (conversations.length === 0) createNewConversation();
   else { currentConversationId = conversations[0].id; populateConversationSelect(); loadConversation(currentConversationId); }
@@ -1077,7 +1088,16 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     } else if (apiType === 'chat') {
       actualUrl = '/api/chat/completions';
-      body = { model, messages: [{ role: 'user', content: prompt }] };
+      const conv = conversations.find(c => c.id === currentConversationId);
+      const sysMsg = conv?.system?.trim();
+      const messages = [];
+      if (sysMsg) messages.push({ role: 'system', content: sysMsg });
+      if (conv) {
+        messages.push(...conv.messages.map(m => ({ role: m.role, content: m.content })));
+      } else {
+        messages.push({ role: 'user', content: prompt });
+      }
+      body = { model, messages };
     } else {
       actualUrl = '/api/completions';
       body = { model, prompt };
