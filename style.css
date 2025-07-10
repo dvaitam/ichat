@@ -228,6 +228,16 @@ body {
 .controls .input-row button:hover {
   background-color: #666;
 }
+#system-prompt {
+  width: 100%;
+  resize: vertical;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  min-height: 60px;
+  margin: 0.5rem 1rem;
+}
 /* Response (chatbox) as chat history container */
 #response {
   flex: 1;
